@@ -29,7 +29,13 @@
   4. User can switch between backend implementations (scalar vs future SIMD/GPU) without API changes
   5. User receives clear error messages for invalid inputs (power-of-two dimension validation)
 
-**Plans:** TBD
+**Plans:** 4 plans
+
+Plans:
+- [ ] 01-01-PLAN.md — API safety fixes (panic to Result, #[must_use], release assertions)
+- [ ] 01-02-PLAN.md — Integration benchmarks for realistic attention workloads
+- [ ] 01-03-PLAN.md — Backend trait abstraction with ScalarBackend extraction
+- [ ] 01-04-PLAN.md — Scratch buffer reuse in PolarQuant::inner_product()
 
 ---
 
@@ -78,7 +84,7 @@
 
 **Success Criteria** (what must be TRUE):
   1. User compiles with `--features gpu` and gains access to CUDA-accelerated batch operations (feature flag)
-  2. User processing batches ≥32 on GPU experiences faster execution than equivalent CPU batch (benchmarked end-to-end)
+  2. User processing batches >=32 on GPU experiences faster execution than equivalent CPU batch (benchmarked end-to-end)
   3. User processing batches <32 automatically uses CPU path without manual configuration (threshold-based dispatch)
   4. User without CUDA toolkit receives clear error messages explaining GPU unavailable and how to resolve
   5. User measures 3-8x combined speedup on realistic attention hot path compared to Phase 0 baseline (integration benchmark validation)
@@ -92,7 +98,7 @@
 
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
-| 1. Foundation & Quick Wins | 0/0 | Not started | - |
+| 1. Foundation & Quick Wins | 0/4 | Planned | - |
 | 2. SIMD Acceleration | 0/0 | Not started | - |
 | 3. Batch Operations | 0/0 | Not started | - |
 | 4. GPU Backend | 0/0 | Not started | - |
@@ -122,11 +128,11 @@ These requirements apply to all phases or specific checkpoints:
 
 ```
 Phase 1 (Foundation)
-   ↓
-Phase 2 (SIMD) ←── Can proceed independently
-   ↓                     ↓
-Phase 3 (Batch) ←────────┘
-   ↓
+   |
+Phase 2 (SIMD) <-- Can proceed independently
+   |                     |
+Phase 3 (Batch) <--------+
+   |
 Phase 4 (GPU)
 ```
 
@@ -138,7 +144,7 @@ Phase 4 (GPU)
 
 **Total v1 requirements:** 45
 **Mapped to phases:** 45
-**Unmapped:** 0 ✓
+**Unmapped:** 0
 
 | Category | Count | Phase Assignment |
 |----------|-------|------------------|
@@ -148,7 +154,7 @@ Phase 4 (GPU)
 | GPU | 10 | Phase 4 |
 | Cross-cutting | 11 | All phases / Phase 4 completion |
 
-**Coverage:** 100% ✓
+**Coverage:** 100%
 
 ---
 
