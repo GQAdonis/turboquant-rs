@@ -9,9 +9,9 @@ Requirements for production-ready optimization milestone. Each maps to roadmap p
 
 ### Foundation (Phase 1)
 
-- [ ] **FOUND-01**: Replace panic! with Result in bitpack::pack() and bitpack::unpack()
-- [ ] **FOUND-02**: Add #[must_use] attributes to all functions returning computed values
-- [ ] **FOUND-03**: Add power-of-two assertion to fwht_inplace() in release builds
+- [x] **FOUND-01**: Replace panic! with Result in bitpack::pack() and bitpack::unpack()
+- [x] **FOUND-02**: Add #[must_use] attributes to all functions returning computed values
+- [x] **FOUND-03**: Add power-of-two assertion to fwht_inplace() in release builds
 - [ ] **FOUND-04**: Define Backend trait for CPU/SIMD/GPU abstraction
 - [ ] **FOUND-05**: Extract ScalarBackend implementing Backend trait
 - [ ] **FOUND-06**: Refactor PolarQuant to use Backend trait with static dispatch
@@ -107,9 +107,9 @@ Which phases cover which requirements. Updated during roadmap creation.
 
 | Requirement | Phase | Status |
 |-------------|-------|--------|
-| FOUND-01 | Phase 1 | Pending |
-| FOUND-02 | Phase 1 | Pending |
-| FOUND-03 | Phase 1 | Pending |
+| FOUND-01 | Phase 1 | Complete |
+| FOUND-02 | Phase 1 | Complete |
+| FOUND-03 | Phase 1 | Complete |
 | FOUND-04 | Phase 1 | Pending |
 | FOUND-05 | Phase 1 | Pending |
 | FOUND-06 | Phase 1 | Pending |

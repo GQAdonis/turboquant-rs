@@ -30,7 +30,7 @@ progress:
 ## Current Position
 
 **Phase:** 01-foundation-quick-wins
-**Plan:** 01-02 (completed)
+**Plan:** 01-01 (completed)
 **Status:** Executing Phase 1
 
 **Progress:**
@@ -39,15 +39,15 @@ progress:
 Phase 1: [█████░░░░░░░░░░░░░░░] 25% (1/4 plans complete)
 ```
 
-**Next Action:** Execute plan 01-03 (power-of-two assertions)
+**Next Action:** Execute plan 01-02
 
 ---
 
 ## Performance Metrics
 
 ### Baseline (Current Implementation)
-- Test coverage: 35/35 passing ✓
-- Error handling: Mostly Result-based (except bitpack.rs panics)
+- Test coverage: 37/37 passing ✓
+- Error handling: Fully Result-based (no panics in public API) ✓
 - Dependencies: Zero (except thiserror) ✓
 - Performance: Unoptimized scalar implementation
 
@@ -80,6 +80,8 @@ Phase 1: [█████░░░░░░░░░░░░░░░] 25% (1/4
 | 2026-03-27 | Phase order: Foundation → SIMD → Batch → GPU | Dependencies + risk mitigation + incremental value | Decided |
 | 2026-03-27 | GPU batch threshold ≥32 | Amortizes memory transfer overhead per research | Pending validation |
 | 2026-03-27 | Feature flags for backends (simd, gpu) | Optional acceleration, compile-time selection | Decided |
+| 2026-03-27 | Made packed_byte_size const fn | Enables compile-time buffer size computation for future static allocation | Decided |
+| 2026-03-27 | Upgrade FWHT assertion to release mode | Negligible cost vs O(n log n) transform, prevents undefined behavior | Decided |
 | 2026-03-27 | Benchmark 128/512/2048/8192 sequence lengths | Covers short to long contexts, validates Phase 1 success criteria | Decided (01-02) |
 | 2026-03-27 | Use batch_1000 for inner product throughput | Establishes baseline for scratch buffer improvement target | Decided (01-02) |
 | 2026-03-27 | Separate logits_only from full attend | Isolates inner_product hot path for precise optimization targeting | Decided (01-02) |
@@ -87,20 +89,20 @@ Phase 1: [█████░░░░░░░░░░░░░░░] 25% (1/4
 ### Todos
 
 **Pre-Phase 1 Prerequisites:**
-- [ ] Add power-of-two assertion to fwht_inplace() (critical for safety)
+- [x] Add power-of-two assertion to fwht_inplace() (01-01 complete)
 - [x] Add integration benchmarks for realistic workloads (01-02 complete)
 - [ ] Verify test coverage includes dimension validation
 - [ ] Document unsafe code guidelines for SIMD phase
 
 **Phase 1 (Foundation):**
 - [x] Plan Phase 1 execution (4 plans created)
+- [x] Replace bitpack.rs panics with Result (01-01 complete)
+- [x] Add #[must_use] attributes (01-01 complete)
+- [x] Add power-of-two assertions (01-01 complete)
+- [x] Add integration benchmarks (01-02 complete)
 - [ ] Define Backend trait interface
 - [ ] Extract ScalarBackend from existing PolarQuant
 - [ ] Implement scratch buffer reuse in inner_product
-- [ ] Replace bitpack.rs panics with Result
-- [ ] Add #[must_use] attributes
-- [ ] Add power-of-two assertions
-- [x] Add integration benchmarks (01-02 complete)
 
 **Phase 2 (SIMD):**
 - Not yet planned
@@ -151,8 +153,8 @@ Phase 1: [█████░░░░░░░░░░░░░░░] 25% (1/4
 ## Session Continuity
 
 **Session started:** 2026-03-27
-**Last session:** 2026-03-27T14:21:42Z
-**Stopped at:** Completed 01-02-PLAN.md
+**Last session:** 2026-03-27T14:26:52Z
+**Stopped at:** Completed 01-01-PLAN.md
 **Mode:** yolo (autonomous execution)
 **Granularity:** standard (5-8 phases)
 
