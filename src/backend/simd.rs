@@ -6,7 +6,6 @@
 
 use crate::backend::{Backend, ScalarBackend};
 use crate::error::{Result, TurboQuantError};
-use crate::hadamard::fwht_normalized_inplace;
 
 /// AVX2-accelerated unnormalized FWHT.
 ///
@@ -122,6 +121,93 @@ unsafe fn fwht_inplace_neon(data: &mut [f32]) {
     }
 }
 
+/// AVX2-accelerated dot product.
+///
+/// Accumulates 8 f32 multiply-adds per iteration, then reduces
+/// via store + scalar sum. Scalar tail handles remaining elements.
+#[cfg(target_arch = "x86_64")]
+#[target_feature(enable = "avx2")]
+unsafe fn dot_product_avx2(a: &[f32], b: &[f32]) -> f32 {
+    use std::arch::x86_64::*;
+
+    debug_assert_eq!(a.len(), b.len());
+
+    let n = a.len();
+    let mut sum_vec = _mm256_setzero_ps();
+    let mut i = 0usize;
+
+    // Process 8 elements at a time
+    while i + 8 <= n {
+        // SAFETY:
+        // 1. AVX2 available: caller checked via is_x86_feature_detected!
+        // 2. Bounds: i + 8 <= n checked in loop condition
+        // 3. Alignment: using _mm256_loadu_ps (unaligned load)
+        let va = _mm256_loadu_ps(a.as_ptr().add(i));
+        let vb = _mm256_loadu_ps(b.as_ptr().add(i));
+        let prod = _mm256_mul_ps(va, vb);
+        sum_vec = _mm256_add_ps(sum_vec, prod);
+        i += 8;
+    }
+
+    // Horizontal reduction: store 8 lanes to array and sum
+    let mut temp = [0.0f32; 8];
+    // SAFETY:
+    // 1. AVX2 available: same as above
+    // 2. Bounds: temp is exactly 8 f32s = 32 bytes = one AVX2 vector
+    // 3. Alignment: using _mm256_storeu_ps (unaligned store)
+    _mm256_storeu_ps(temp.as_mut_ptr(), sum_vec);
+    let mut result: f32 = temp.iter().sum();
+
+    // Scalar tail for remaining elements
+    while i < n {
+        result += a[i] * b[i];
+        i += 1;
+    }
+
+    result
+}
+
+/// NEON-accelerated dot product.
+///
+/// Accumulates 4 f32 multiply-adds per iteration using vmlaq_f32
+/// (fused multiply-add). Scalar tail handles remaining elements.
+#[cfg(target_arch = "aarch64")]
+#[target_feature(enable = "neon")]
+unsafe fn dot_product_neon(a: &[f32], b: &[f32]) -> f32 {
+    use std::arch::aarch64::*;
+
+    debug_assert_eq!(a.len(), b.len());
+
+    let n = a.len();
+    let mut sum_vec = vdupq_n_f32(0.0);
+    let mut i = 0usize;
+
+    // Process 4 elements at a time
+    while i + 4 <= n {
+        // SAFETY:
+        // 1. NEON available: caller checked via is_aarch64_feature_detected!
+        // 2. Bounds: i + 4 <= n checked in loop condition
+        // 3. Alignment: vld1q_f32 does not require alignment
+        let va = vld1q_f32(a.as_ptr().add(i));
+        let vb = vld1q_f32(b.as_ptr().add(i));
+        sum_vec = vmlaq_f32(sum_vec, va, vb);  // sum += a * b (fused)
+        i += 4;
+    }
+
+    // Horizontal reduction: sum 4 lanes
+    // SAFETY: NEON available (same as above), operating on register value
+    let result = vaddvq_f32(sum_vec);
+
+    // Scalar tail
+    let mut tail_sum = result;
+    while i < n {
+        tail_sum += a[i] * b[i];
+        i += 1;
+    }
+
+    tail_sum
+}
+
 /// SIMD-accelerated compute backend.
 ///
 /// Uses AVX2 on x86_64 and NEON on aarch64 for vectorized FWHT
@@ -168,7 +254,23 @@ impl Backend for SimdBackend {
 
     #[inline]
     fn dot_product(&self, a: &[f32], b: &[f32]) -> f32 {
-        // TODO(plan-02): Replace with SIMD dot product (AVX2/NEON)
+        #[cfg(target_arch = "x86_64")]
+        {
+            if is_x86_feature_detected!("avx2") {
+                // SAFETY: AVX2 availability confirmed by is_x86_feature_detected!
+                return unsafe { dot_product_avx2(a, b) };
+            }
+        }
+
+        #[cfg(target_arch = "aarch64")]
+        {
+            if std::arch::is_aarch64_feature_detected!("neon") {
+                // SAFETY: NEON availability confirmed by is_aarch64_feature_detected!
+                return unsafe { dot_product_neon(a, b) };
+            }
+        }
+
+        // Scalar fallback
         a.iter().zip(b).map(|(&x, &y)| x * y).sum()
     }
 
@@ -333,5 +435,68 @@ mod tests {
         let v_result = simd.dot_product(&a, &b);
         assert!((s_result - v_result).abs() < 1e-6,
             "SIMD/scalar dot mismatch: {s_result} vs {v_result}");
+    }
+
+    #[test]
+    fn simd_matches_scalar_dot_product_large() {
+        let scalar = ScalarBackend;
+        let simd = SimdBackend;
+        // Test with dim=128 (typical head dimension, 16 AVX2 iterations)
+        let a: Vec<f32> = (0..128).map(|i| (i as f32 * 0.1).sin()).collect();
+        let b: Vec<f32> = (0..128).map(|i| (i as f32 * 0.07).cos()).collect();
+        let s_result = scalar.dot_product(&a, &b);
+        let v_result = simd.dot_product(&a, &b);
+        assert!((s_result - v_result).abs() < 1e-4,
+            "SIMD/scalar dot mismatch for dim=128: {s_result} vs {v_result}");
+    }
+
+    #[test]
+    fn simd_matches_scalar_fwht_dim128() {
+        let scalar = ScalarBackend;
+        let simd = SimdBackend;
+        let mut data_s: Vec<f32> = (0..128).map(|i| (i as f32 * 0.1).sin()).collect();
+        let mut data_v = data_s.clone();
+        scalar.fwht_normalized_inplace(&mut data_s);
+        simd.fwht_normalized_inplace(&mut data_v);
+        for (idx, (a, b)) in data_s.iter().zip(&data_v).enumerate() {
+            assert!((a - b).abs() < 1e-4,
+                "SIMD/scalar FWHT mismatch at index {idx} for dim=128: {a} vs {b}");
+        }
+    }
+
+    #[test]
+    fn simd_dot_product_empty_and_small() {
+        let backend = SimdBackend;
+        // Empty
+        assert!((backend.dot_product(&[], &[]) - 0.0).abs() < 1e-10);
+        // 1 element
+        assert!((backend.dot_product(&[3.0], &[4.0]) - 12.0).abs() < 1e-6);
+        // 7 elements (not multiple of 4 or 8)
+        let a = vec![1.0f32; 7];
+        let b = vec![2.0f32; 7];
+        assert!((backend.dot_product(&a, &b) - 14.0).abs() < 1e-6);
+    }
+
+    #[test]
+    fn simd_inner_product_accuracy() {
+        // Verify that using SIMD backend in a PolarQuant-like scenario
+        // maintains <2% relative error on inner products
+        let scalar = ScalarBackend;
+        let simd = SimdBackend;
+        let dim = 128;
+        // Generate random-ish unit vectors
+        let a: Vec<f32> = (0..dim).map(|i| (i as f32 * 0.31).sin()).collect();
+        let b: Vec<f32> = (0..dim).map(|i| (i as f32 * 0.47).cos()).collect();
+        let norm_a: f32 = a.iter().map(|x| x * x).sum::<f32>().sqrt();
+        let norm_b: f32 = b.iter().map(|x| x * x).sum::<f32>().sqrt();
+        let a_unit: Vec<f32> = a.iter().map(|x| x / norm_a).collect();
+        let b_unit: Vec<f32> = b.iter().map(|x| x / norm_b).collect();
+
+        let scalar_dot = scalar.dot_product(&a_unit, &b_unit);
+        let simd_dot = simd.dot_product(&a_unit, &b_unit);
+        let relative_error = ((scalar_dot - simd_dot) / scalar_dot).abs();
+        assert!(relative_error < 0.02,
+            "SIMD inner product error {:.4}% exceeds 2% threshold (scalar={scalar_dot}, simd={simd_dot})",
+            relative_error * 100.0);
     }
 }
