@@ -1,0 +1,38 @@
+[package]
+name        = "turboquant"
+version     = "0.1.0"
+edition     = "2021"
+authors     = ["turboquant-rs contributors"]
+description = "Pure Rust implementation of TurboQuant (ICLR 2026) — KV-cache compression via PolarQuant + QJL"
+license     = "MIT"
+repository  = "https://github.com/your-org/turboquant-rs"  # TODO: Update with actual repository URL
+readme      = "README.md"
+homepage    = "https://github.com/your-org/turboquant-rs"  # TODO: Update with actual repository URL
+keywords    = ["llm", "quantization", "kv-cache", "attention", "compression"]
+categories  = ["algorithms", "science"]
+rust-version = "1.70"
+
+[dependencies]
+thiserror = "2"
+
+[dev-dependencies]
+criterion = { version = "0.5", features = ["html_reports"] }
+
+[[example]]
+name = "demo"
+path = "examples/demo.rs"
+
+[[bench]]
+name = "bench"
+harness = false
+path = "benches/bench.rs"
+
+[[bench]]
+name = "integration"
+harness = false
+path = "benches/integration.rs"
+
+[profile.release]
+opt-level   = 3
+lto         = "thin"
+codegen-units = 1
