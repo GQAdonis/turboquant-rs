@@ -3,6 +3,23 @@
 //! Uses AVX2 on x86_64 and NEON on aarch64 for vectorized FWHT
 //! and dot product operations. Falls back to scalar for small
 //! dimensions or unsupported strides.
+//!
+//! # Safety Verification
+//!
+//! Miri cannot interpret platform-specific SIMD intrinsics (AVX2, NEON).
+//! Safety is verified through:
+//! 1. SAFETY documentation on every unsafe block (target feature, bounds, alignment)
+//! 2. Equivalence tests: SIMD output matches scalar output for all dimensions
+//! 3. Roundtrip tests: FWHT applied twice recovers original vector
+//! 4. Bounds checks: debug_assert! on all size assumptions
+//! 5. Unaligned loads only: _mm256_loadu_ps / vld1q_f32 (no alignment UB)
+//!
+//! To run Miri verification (scalar path only, SIMD intrinsics unsupported by Miri):
+//! ```bash
+//! rustup toolchain install nightly
+//! rustup component add miri --toolchain nightly
+//! cargo +nightly miri test --lib backend::scalar
+//! ```
 
 use crate::backend::{Backend, ScalarBackend};
 use crate::error::{Result, TurboQuantError};
@@ -498,5 +515,68 @@ mod tests {
         assert!(relative_error < 0.02,
             "SIMD inner product error {:.4}% exceeds 2% threshold (scalar={scalar_dot}, simd={simd_dot})",
             relative_error * 100.0);
+    }
+
+    #[test]
+    fn simd_fwht_all_power_of_two_dims() {
+        let scalar = ScalarBackend;
+        let simd = SimdBackend;
+        for exp in 1..=10 {  // dims 2, 4, 8, 16, 32, 64, 128, 256, 512, 1024
+            let dim = 1 << exp;
+            let mut data_s: Vec<f32> = (0..dim).map(|i| (i as f32 * 0.13).sin()).collect();
+            let mut data_v = data_s.clone();
+            scalar.fwht_normalized_inplace(&mut data_s);
+            simd.fwht_normalized_inplace(&mut data_v);
+            for (idx, (a, b)) in data_s.iter().zip(&data_v).enumerate() {
+                assert!((a - b).abs() < 1e-3,
+                    "SIMD/scalar FWHT mismatch at dim={dim}, index={idx}: {a} vs {b}");
+            }
+        }
+    }
+
+    #[test]
+    fn simd_dot_product_all_power_of_two_dims() {
+        let scalar = ScalarBackend;
+        let simd = SimdBackend;
+        for exp in 0..=10 {  // dims 1, 2, 4, ..., 1024
+            let dim = 1 << exp;
+            let a: Vec<f32> = (0..dim).map(|i| (i as f32 * 0.1).sin()).collect();
+            let b: Vec<f32> = (0..dim).map(|i| (i as f32 * 0.07).cos()).collect();
+            let s = scalar.dot_product(&a, &b);
+            let v = simd.dot_product(&a, &b);
+            assert!((s - v).abs() < 1e-3 * dim as f32,
+                "SIMD/scalar dot mismatch at dim={dim}: {s} vs {v}");
+        }
+    }
+
+    #[test]
+    fn simd_fwht_roundtrip_all_dims() {
+        let simd = SimdBackend;
+        for exp in 1..=10 {
+            let dim = 1 << exp;
+            let original: Vec<f32> = (0..dim).map(|i| (i as f32 * 0.17).cos()).collect();
+            let mut data = original.clone();
+            simd.fwht_normalized_inplace(&mut data);
+            simd.fwht_normalized_inplace(&mut data);
+            for (idx, (a, b)) in original.iter().zip(&data).enumerate() {
+                assert!((a - b).abs() < 1e-3,
+                    "SIMD FWHT roundtrip failed at dim={dim}, index={idx}: {a} vs {b}");
+            }
+        }
+    }
+
+    #[test]
+    fn simd_fwht_norm_preservation() {
+        let simd = SimdBackend;
+        for exp in 1..=10 {
+            let dim = 1 << exp;
+            let data: Vec<f32> = (0..dim).map(|i| (i as f32 * 0.11).sin()).collect();
+            let norm_before: f32 = data.iter().map(|x| x * x).sum::<f32>().sqrt();
+            let mut transformed = data.clone();
+            simd.fwht_normalized_inplace(&mut transformed);
+            let norm_after: f32 = transformed.iter().map(|x| x * x).sum::<f32>().sqrt();
+            assert!((norm_before - norm_after).abs() < 1e-3,
+                "Norm not preserved at dim={dim}: {norm_before} vs {norm_after}");
+        }
     }
 }
