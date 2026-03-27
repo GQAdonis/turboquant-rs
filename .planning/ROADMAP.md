@@ -9,7 +9,7 @@
 ## Phases
 
 - [x] **Phase 1: Foundation & Quick Wins** - Establish backend architecture and eliminate allocation overhead (completed 2026-03-27)
-- [ ] **Phase 2: SIMD Acceleration** - Vectorize FWHT operations for 2-4x speedup on CPU
+- [x] **Phase 2: SIMD Acceleration** - Vectorize FWHT operations for 2-4x speedup on CPU (completed 2026-03-27)
 - [ ] **Phase 3: Batch Operations** - Enable multi-vector processing for throughput optimization
 - [ ] **Phase 4: GPU Backend** - CUDA acceleration for large-batch inference workloads
 
@@ -53,7 +53,7 @@ Plans:
   4. User compiles with `--features simd` and gets vectorized implementations, or without flag and gets scalar only (compile-time selection)
   5. User sees identical quantization results between SIMD and scalar backends (within f32 precision, verified by tests)
 
-**Plans:** 3/4 plans complete
+**Plans:** 3/3 plans complete
 
 Plans:
 - [x] 02-01-PLAN.md — Feature flag, SimdBackend scaffold, RuntimeBackend with CPU detection
@@ -105,7 +105,7 @@ Plans:
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
 | 1. Foundation & Quick Wins | 4/4 | Complete    | 2026-03-27 |
-| 2. SIMD Acceleration | 0/3 | Planning complete | - |
+| 2. SIMD Acceleration | 0/3 | Complete    | 2026-03-27 |
 | 3. Batch Operations | 0/0 | Not started | - |
 | 4. GPU Backend | 0/0 | Not started | - |
 
