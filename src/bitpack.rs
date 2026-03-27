@@ -11,6 +11,7 @@
 
 /// Number of packed bytes needed for `count` values at `bits` bits each.
 #[inline]
+#[must_use]
 pub const fn packed_byte_size(count: usize, bits: u8) -> usize {
     (count * bits as usize + 7) / 8
 }

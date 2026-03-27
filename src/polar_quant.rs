@@ -40,11 +40,13 @@ pub struct QuantizedVector {
 
 impl QuantizedVector {
     /// Compressed size in bytes (norm f32 + packed indices).
+    #[must_use]
     pub fn byte_size(&self) -> usize {
         4 + self.packed.len()
     }
 
     /// Compression ratio relative to f32 storage.
+    #[must_use]
     pub fn compression_ratio(&self) -> f32 {
         (self.dim * 4) as f32 / self.byte_size() as f32
     }
@@ -74,6 +76,7 @@ impl PolarQuant {
     // ── Quantize ──────────────────────────────────────────────────────────
 
     /// Compress a vector to a [`QuantizedVector`].
+    #[must_use = "quantized vector should be stored or used"]
     pub fn quantize(&self, vec: &[f32]) -> Result<QuantizedVector> {
         let dim = self.rotation.dim;
         self.check_dim(vec.len())?;
@@ -102,6 +105,7 @@ impl PolarQuant {
     // ── Dequantize ────────────────────────────────────────────────────────
 
     /// Reconstruct an approximate vector from a [`QuantizedVector`].
+    #[must_use = "dequantized vector should be used"]
     pub fn dequantize(&self, qv: &QuantizedVector) -> Result<Vec<f32>> {
         self.check_dim(qv.dim)?;
 
@@ -124,6 +128,7 @@ impl PolarQuant {
     /// This is the primary hot path for attention logit computation.
     /// The query is rotated once; the dot product is then computed
     /// against the codebook centroids indexed by the packed key.
+    #[must_use = "inner product result should be used"]
     pub fn inner_product(&self, query: &[f32], key: &QuantizedVector) -> Result<f32> {
         self.check_dim(query.len())?;
         self.check_dim(key.dim)?;
