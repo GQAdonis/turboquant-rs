@@ -8,6 +8,120 @@ use crate::backend::{Backend, ScalarBackend};
 use crate::error::{Result, TurboQuantError};
 use crate::hadamard::fwht_normalized_inplace;
 
+/// AVX2-accelerated unnormalized FWHT.
+///
+/// Processes 8 f32 butterflies per iteration when stride >= 8.
+/// Falls back to scalar for strides 1, 2, 4 where vectorization
+/// would mix incorrect butterfly pairs.
+#[cfg(target_arch = "x86_64")]
+#[target_feature(enable = "avx2")]
+unsafe fn fwht_inplace_avx2(data: &mut [f32]) {
+    use std::arch::x86_64::*;
+
+    debug_assert!(data.len().is_power_of_two());
+    debug_assert!(data.len() >= 2);
+
+    let n = data.len();
+    let mut step = 1usize;
+
+    while step < n {
+        let mut i = 0usize;
+        while i < n {
+            if step >= 8 {
+                // SIMD path: process 8 butterflies at a time
+                let mut j = 0usize;
+                while j + 8 <= step {
+                    // SAFETY:
+                    // 1. AVX2 available: caller checked via is_x86_feature_detected!
+                    // 2. Bounds: i + j + step + 8 <= n because j + 8 <= step
+                    //    and i + 2*step <= n (loop invariant)
+                    // 3. Alignment: using _mm256_loadu_ps (unaligned load)
+                    let a_ptr = data.as_ptr().add(i + j);
+                    let b_ptr = data.as_ptr().add(i + j + step);
+
+                    let a = _mm256_loadu_ps(a_ptr);
+                    let b = _mm256_loadu_ps(b_ptr);
+
+                    let sum = _mm256_add_ps(a, b);
+                    let diff = _mm256_sub_ps(a, b);
+
+                    _mm256_storeu_ps(data.as_mut_ptr().add(i + j), sum);
+                    _mm256_storeu_ps(data.as_mut_ptr().add(i + j + step), diff);
+
+                    j += 8;
+                }
+            } else {
+                // Scalar fallback for small strides (1, 2, 4)
+                // Vectorizing these requires complex shuffles that negate SIMD benefit
+                for j in 0..step {
+                    let a_val = data[i + j];
+                    let b_val = data[i + j + step];
+                    data[i + j] = a_val + b_val;
+                    data[i + j + step] = a_val - b_val;
+                }
+            }
+            i += 2 * step;
+        }
+        step <<= 1;
+    }
+}
+
+/// NEON-accelerated unnormalized FWHT.
+///
+/// Processes 4 f32 butterflies per iteration when stride >= 4.
+/// Falls back to scalar for strides 1, 2.
+#[cfg(target_arch = "aarch64")]
+#[target_feature(enable = "neon")]
+unsafe fn fwht_inplace_neon(data: &mut [f32]) {
+    use std::arch::aarch64::*;
+
+    debug_assert!(data.len().is_power_of_two());
+    debug_assert!(data.len() >= 2);
+
+    let n = data.len();
+    let mut step = 1usize;
+
+    while step < n {
+        let mut i = 0usize;
+        while i < n {
+            if step >= 4 {
+                // SIMD path: process 4 butterflies at a time
+                let mut j = 0usize;
+                while j + 4 <= step {
+                    // SAFETY:
+                    // 1. NEON available: caller checked via is_aarch64_feature_detected!
+                    // 2. Bounds: i + j + step + 4 <= n because j + 4 <= step
+                    //    and i + 2*step <= n (loop invariant)
+                    // 3. Alignment: vld1q_f32 does not require alignment
+                    let a_ptr = data.as_ptr().add(i + j);
+                    let b_ptr = data.as_ptr().add(i + j + step);
+
+                    let a = vld1q_f32(a_ptr);
+                    let b = vld1q_f32(b_ptr);
+
+                    let sum = vaddq_f32(a, b);
+                    let diff = vsubq_f32(a, b);
+
+                    vst1q_f32(data.as_mut_ptr().add(i + j), sum);
+                    vst1q_f32(data.as_mut_ptr().add(i + j + step), diff);
+
+                    j += 4;
+                }
+            } else {
+                // Scalar fallback for strides 1, 2
+                for j in 0..step {
+                    let a_val = data[i + j];
+                    let b_val = data[i + j + step];
+                    data[i + j] = a_val + b_val;
+                    data[i + j + step] = a_val - b_val;
+                }
+            }
+            i += 2 * step;
+        }
+        step <<= 1;
+    }
+}
+
 /// SIMD-accelerated compute backend.
 ///
 /// Uses AVX2 on x86_64 and NEON on aarch64 for vectorized FWHT
@@ -19,8 +133,37 @@ pub struct SimdBackend;
 impl Backend for SimdBackend {
     #[inline]
     fn fwht_normalized_inplace(&self, data: &mut [f32]) {
-        // TODO(plan-02): Replace with SIMD FWHT (AVX2/NEON)
-        fwht_normalized_inplace(data);
+        assert!(
+            data.len().is_power_of_two(),
+            "FWHT requires power-of-two length, got {}",
+            data.len()
+        );
+
+        // Dispatch to SIMD or scalar based on CPU features
+        #[cfg(target_arch = "x86_64")]
+        {
+            if is_x86_feature_detected!("avx2") {
+                // SAFETY: AVX2 availability confirmed by is_x86_feature_detected!
+                unsafe { fwht_inplace_avx2(data); }
+                let scale = 1.0 / (data.len() as f32).sqrt();
+                data.iter_mut().for_each(|x| *x *= scale);
+                return;
+            }
+        }
+
+        #[cfg(target_arch = "aarch64")]
+        {
+            if std::arch::is_aarch64_feature_detected!("neon") {
+                // SAFETY: NEON availability confirmed by is_aarch64_feature_detected!
+                unsafe { fwht_inplace_neon(data); }
+                let scale = 1.0 / (data.len() as f32).sqrt();
+                data.iter_mut().for_each(|x| *x *= scale);
+                return;
+            }
+        }
+
+        // Scalar fallback
+        crate::hadamard::fwht_normalized_inplace(data);
     }
 
     #[inline]
