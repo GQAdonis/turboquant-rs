@@ -77,7 +77,12 @@ Plans:
   4. User processing 64-vector batches experiences measurable throughput improvement over 64 sequential single-vector calls (benchmarked)
   5. User's batch operations leverage CPU parallelism automatically (rayon integration, multi-core utilization)
 
-**Plans:** TBD
+**Plans:** 3 plans
+
+Plans:
+- [ ] 03-01-PLAN.md — Rayon dependency + batch APIs on PolarQuant (batch_quantize, batch_inner_product)
+- [ ] 03-02-PLAN.md — Clone for TurboQuant/KvCache + batch_attend on KvCache
+- [ ] 03-03-PLAN.md — Batch-of-1 regression and batch-of-64 throughput benchmarks
 
 ---
 
@@ -106,10 +111,10 @@ Plans:
 |-------|----------------|--------|-----------|
 | 1. Foundation & Quick Wins | 4/4 | Complete    | 2026-03-27 |
 | 2. SIMD Acceleration | 0/3 | Complete    | 2026-03-27 |
-| 3. Batch Operations | 0/0 | Not started | - |
+| 3. Batch Operations | 0/3 | Planning complete | - |
 | 4. GPU Backend | 0/0 | Not started | - |
 
-**Overall:** 25% complete (1/4 phases)
+**Overall:** 50% complete (2/4 phases)
 
 ---
 
