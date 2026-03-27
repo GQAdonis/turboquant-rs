@@ -16,7 +16,7 @@ Requirements for production-ready optimization milestone. Each maps to roadmap p
 - [ ] **FOUND-05**: Extract ScalarBackend implementing Backend trait
 - [ ] **FOUND-06**: Refactor PolarQuant to use Backend trait with static dispatch
 - [ ] **FOUND-07**: Add scratch buffer reuse to PolarQuant::inner_product()
-- [ ] **FOUND-08**: Add integration benchmarks for realistic workloads
+- [x] **FOUND-08**: Add integration benchmarks for realistic workloads
 
 ### SIMD Acceleration (Phase 2)
 
@@ -114,7 +114,7 @@ Which phases cover which requirements. Updated during roadmap creation.
 | FOUND-05 | Phase 1 | Pending |
 | FOUND-06 | Phase 1 | Pending |
 | FOUND-07 | Phase 1 | Pending |
-| FOUND-08 | Phase 1 | Pending |
+| FOUND-08 | Phase 1 | Complete |
 | SIMD-01 | Phase 2 | Pending |
 | SIMD-02 | Phase 2 | Pending |
 | SIMD-03 | Phase 2 | Pending |
