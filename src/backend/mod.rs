@@ -5,11 +5,17 @@
 //! SIMD and GPU implementations without changing the core algorithm code.
 //!
 //! Phase 1 provides [`ScalarBackend`] which wraps the existing scalar
-//! implementations.  Phase 2 will add `SimdBackend`.
+//! implementations.  Phase 2 adds [`SimdBackend`] and [`RuntimeBackend`].
 
 mod scalar;
 
+#[cfg(feature = "simd")]
+mod simd;
+
 pub use scalar::ScalarBackend;
+
+#[cfg(feature = "simd")]
+pub use simd::{SimdBackend, RuntimeBackend};
 
 use crate::error::Result;
 
