@@ -15,6 +15,7 @@
 //! uncompressed — a ~9.8x reduction (keys + values together).
 
 use crate::{
+    backend::{Backend, ScalarBackend},
     error::Result,
     turboquant::{TurboQuant, TurboVectorMse},
 };
@@ -69,23 +70,36 @@ impl AttentionOutput {
 // ── KvCache ─────────────────────────────────────────────────────────────────
 
 /// A single-head TurboQuant-compressed KV cache.
-pub struct KvCache {
-    key_tq: TurboQuant,
-    val_tq: TurboQuant,
+pub struct KvCache<B: Backend = ScalarBackend> {
+    key_tq: TurboQuant<B>,
+    val_tq: TurboQuant<B>,
     entries: Vec<Entry>,
     head_dim: usize,
 }
 
-impl KvCache {
-    /// Create a new KV cache.
+impl KvCache<ScalarBackend> {
+    /// Create a new KV cache with the default scalar backend.
     ///
     /// - `head_dim`  — attention head dimension (must be power of two)
     /// - `bits`      — compression bit-width (2, 3, or 4)
     /// - `key_seed`, `val_seed` — independent seeds; use different values to
     ///   give keys and values independent random rotations
     pub fn new(head_dim: usize, bits: u8, key_seed: u64, val_seed: u64) -> Result<Self> {
-        let key_tq = TurboQuant::new(head_dim, bits, key_seed)?;
-        let val_tq = TurboQuant::new(head_dim, bits, val_seed)?;
+        Self::new_with_backend(head_dim, bits, key_seed, val_seed, ScalarBackend)
+    }
+}
+
+impl<B: Backend> KvCache<B> {
+    /// Create a new KV cache with an explicit backend.
+    pub fn new_with_backend(
+        head_dim: usize,
+        bits: u8,
+        key_seed: u64,
+        val_seed: u64,
+        backend: B,
+    ) -> Result<Self> {
+        let key_tq = TurboQuant::new_with_backend(head_dim, bits, key_seed, backend.clone())?;
+        let val_tq = TurboQuant::new_with_backend(head_dim, bits, val_seed, backend)?;
         Ok(Self { key_tq, val_tq, entries: Vec::new(), head_dim })
     }
 

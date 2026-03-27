@@ -17,6 +17,7 @@
 //!   ⟨q, x⟩ ≈ ‖x‖ · ⟨R q, dequant(R x̂)⟩  =  ‖x‖ · Σᵢ (Rq)ᵢ · centroid[idxᵢ]
 
 use crate::{
+    backend::{Backend, ScalarBackend},
     bitpack,
     codebook::Codebook,
     error::{Result, TurboQuantError},
@@ -56,21 +57,29 @@ impl QuantizedVector {
 
 /// Stage-1 TurboQuant quantizer: rotation + optimal scalar quantization.
 #[derive(Debug, Clone)]
-pub struct PolarQuant {
-    rotation: Rotation,
+pub struct PolarQuant<B: Backend = ScalarBackend> {
+    rotation: Rotation<B>,
     codebook: Codebook,
+    backend: B,
 }
 
-impl PolarQuant {
-    /// Create a PolarQuant for `dim`-dimensional vectors.
+impl PolarQuant<ScalarBackend> {
+    /// Create a PolarQuant with the default scalar backend.
     ///
     /// - `dim`  — head dimension; **must be a power of two** (64, 128, 256, …)
     /// - `bits` — target bit-width per coordinate: 2, 3, or 4
     /// - `seed` — RNG seed for the rotation matrix
     pub fn new(dim: usize, bits: u8, seed: u64) -> Result<Self> {
-        let rotation = Rotation::new(dim, seed)?;
+        Self::new_with_backend(dim, bits, seed, ScalarBackend)
+    }
+}
+
+impl<B: Backend> PolarQuant<B> {
+    /// Create a PolarQuant with an explicit backend.
+    pub fn new_with_backend(dim: usize, bits: u8, seed: u64, backend: B) -> Result<Self> {
+        let rotation = Rotation::new_with_backend(dim, seed, backend.clone())?;
         let codebook = Codebook::new(bits, dim)?;
-        Ok(Self { rotation, codebook })
+        Ok(Self { rotation, codebook, backend })
     }
 
     // ── Quantize ──────────────────────────────────────────────────────────
@@ -155,7 +164,7 @@ impl PolarQuant {
     // ── Accessors ─────────────────────────────────────────────────────────
 
     pub fn codebook(&self)  -> &Codebook { &self.codebook  }
-    pub fn rotation(&self)  -> &Rotation { &self.rotation  }
+    pub fn rotation(&self)  -> &Rotation<B> { &self.rotation  }
     pub fn dim(&self)       -> usize      { self.rotation.dim }
     pub fn bits(&self)      -> u8         { self.codebook.bits }
 

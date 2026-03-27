@@ -12,6 +12,7 @@
 //! The paper uses Prod for the theoretical unbiasedness guarantee.
 
 use crate::{
+    backend::{Backend, ScalarBackend},
     error::Result,
     polar_quant::{PolarQuant, QuantizedVector},
     qjl::{Qjl, QjlVector},
@@ -52,27 +53,34 @@ impl TurboVectorProd {
 /// [`TurboQuant::inner_product_mse`] — they are simpler, faster, and match the
 /// Prod variant's quality in practice.
 #[derive(Debug)]
-pub struct TurboQuant {
+pub struct TurboQuant<B: Backend = ScalarBackend> {
     // Stage-1 MSE quantizer (full b bits).
-    mse: PolarQuant,
+    mse: PolarQuant<B>,
     // Stage-1 Prod quantizer (b-1 bits); None when bits <= 2.
-    prod_polar: Option<PolarQuant>,
+    prod_polar: Option<PolarQuant<B>>,
     // Stage-2 QJL residual compressor; None when bits <= 2.
     qjl: Option<Qjl>,
     bits: u8,
 }
 
-impl TurboQuant {
-    /// Create a [`TurboQuant`] instance.
+impl TurboQuant<ScalarBackend> {
+    /// Create a [`TurboQuant`] instance with the default scalar backend.
     ///
     /// - `dim`  — vector dimension (must be a power of two)
     /// - `bits` — target bit-width: 2, 3, or 4
     /// - `seed` — base seed; the QJL rotation uses `seed.wrapping_add(1)`
     pub fn new(dim: usize, bits: u8, seed: u64) -> Result<Self> {
-        let mse = PolarQuant::new(dim, bits, seed)?;
+        Self::new_with_backend(dim, bits, seed, ScalarBackend)
+    }
+}
+
+impl<B: Backend> TurboQuant<B> {
+    /// Create a [`TurboQuant`] instance with an explicit backend.
+    pub fn new_with_backend(dim: usize, bits: u8, seed: u64, backend: B) -> Result<Self> {
+        let mse = PolarQuant::new_with_backend(dim, bits, seed, backend.clone())?;
 
         let (prod_polar, qjl) = if bits >= 3 {
-            let pp = PolarQuant::new(dim, bits - 1, seed.wrapping_add(0x1111))?;
+            let pp = PolarQuant::new_with_backend(dim, bits - 1, seed.wrapping_add(0x1111), backend)?;
             let q  = Qjl::new(dim, seed.wrapping_add(0x2222))?;
             (Some(pp), Some(q))
         } else {

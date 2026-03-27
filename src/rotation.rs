@@ -19,23 +19,34 @@
 //! Beta((d-1)/2, (d-1)/2) distribution — close to N(0, 1/d) for large d.
 //! This allows independent optimal scalar quantization per coordinate.
 
-use crate::{error::{Result, TurboQuantError}, hadamard::fwht_normalized_inplace};
+use crate::{
+    backend::{Backend, ScalarBackend},
+    error::{Result, TurboQuantError},
+};
 
 /// A seeded, reproducible randomized Hadamard rotation for a fixed dimension.
 #[derive(Debug, Clone)]
-pub struct Rotation {
+pub struct Rotation<B: Backend = ScalarBackend> {
     /// ±1 signs for the diagonal matrix D, stored as i8 for compact layout.
     signs: Vec<i8>,
     pub dim: usize,
+    backend: B,
 }
 
-impl Rotation {
-    /// Create a new rotation.  `dim` must be a power of two.
+impl Rotation<ScalarBackend> {
+    /// Create a new rotation with the default scalar backend.
     pub fn new(dim: usize, seed: u64) -> Result<Self> {
+        Self::new_with_backend(dim, seed, ScalarBackend)
+    }
+}
+
+impl<B: Backend> Rotation<B> {
+    /// Create a new rotation with an explicit backend.
+    pub fn new_with_backend(dim: usize, seed: u64, backend: B) -> Result<Self> {
         if !dim.is_power_of_two() {
             return Err(TurboQuantError::DimensionNotPowerOfTwo(dim));
         }
-        Ok(Self { signs: gen_signs(dim, seed), dim })
+        Ok(Self { signs: gen_signs(dim, seed), dim, backend })
     }
 
     /// Apply R: x → H̃(D x)   (in-place).
@@ -45,14 +56,14 @@ impl Rotation {
         for (x, &s) in v.iter_mut().zip(&self.signs) {
             *x *= s as f32;
         }
-        fwht_normalized_inplace(v);
+        self.backend.fwht_normalized_inplace(v);
     }
 
     /// Apply R^{-1} = R^T: y → D(H̃ y)   (in-place).
     #[inline]
     pub fn apply_inverse(&self, v: &mut [f32]) {
         debug_assert_eq!(v.len(), self.dim);
-        fwht_normalized_inplace(v);
+        self.backend.fwht_normalized_inplace(v);
         for (x, &s) in v.iter_mut().zip(&self.signs) {
             *x *= s as f32;
         }
