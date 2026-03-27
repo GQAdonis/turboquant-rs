@@ -44,6 +44,7 @@
 //! Use [`PolarQuant`] directly for standalone vector compression, or
 //! [`TurboQuant`] to access both MSE and Prod variants.
 
+pub mod backend;
 pub mod bitpack;
 pub mod codebook;
 pub mod error;
@@ -55,6 +56,9 @@ pub mod rotation;
 pub mod turboquant;
 
 // ── Re-exports ──────────────────────────────────────────────────────────────
+
+// Backend abstraction
+pub use backend::{Backend, ScalarBackend};
 
 pub use error::{Result, TurboQuantError};
 
