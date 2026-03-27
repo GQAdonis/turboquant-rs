@@ -22,10 +22,10 @@ Requirements for production-ready optimization milestone. Each maps to roadmap p
 
 - [ ] **SIMD-01**: Implement SimdBackend with AVX2 intrinsics for x86_64
 - [ ] **SIMD-02**: Implement SimdBackend with NEON intrinsics for ARM
-- [ ] **SIMD-03**: Add runtime CPU feature detection (is_x86_feature_detected!)
+- [x] **SIMD-03**: Add runtime CPU feature detection (is_x86_feature_detected!)
 - [ ] **SIMD-04**: Implement SIMD FWHT butterfly operations
-- [ ] **SIMD-05**: Add automatic fallback to scalar when SIMD unavailable
-- [ ] **SIMD-06**: Add feature flag `simd` for compile-time backend selection
+- [x] **SIMD-05**: Add automatic fallback to scalar when SIMD unavailable
+- [x] **SIMD-06**: Add feature flag `simd` for compile-time backend selection
 - [ ] **SIMD-07**: Document SAFETY requirements for all unsafe SIMD code
 - [ ] **SIMD-08**: Verify SIMD correctness with Miri on test suite
 - [ ] **SIMD-09**: Achieve 2-4x speedup on FWHT operations (benchmarked)
@@ -55,12 +55,12 @@ Requirements for production-ready optimization milestone. Each maps to roadmap p
 
 ### Cross-Cutting (All Phases)
 
-- [ ] **TEST-01**: All 35 existing tests pass after each phase
-- [ ] **TEST-02**: Add correctness tests for each new backend
+- [x] **TEST-01**: All 35 existing tests pass after each phase
+- [x] **TEST-02**: Add correctness tests for each new backend
 - [ ] **TEST-03**: Add performance regression tests
 - [ ] **PERF-01**: Achieve <2% inner product error (maintain accuracy)
 - [ ] **PERF-02**: Demonstrate 3-8x combined speedup on attention hot path
-- [ ] **API-01**: Maintain backward compatibility (existing API unchanged)
+- [x] **API-01**: Maintain backward compatibility (existing API unchanged)
 - [ ] **DOC-01**: Document feature flags and backend selection
 - [ ] **DOC-02**: Add performance guide with benchmark results
 
@@ -117,10 +117,10 @@ Which phases cover which requirements. Updated during roadmap creation.
 | FOUND-08 | Phase 1 | Complete |
 | SIMD-01 | Phase 2 | Pending |
 | SIMD-02 | Phase 2 | Pending |
-| SIMD-03 | Phase 2 | Pending |
+| SIMD-03 | Phase 2 | Complete |
 | SIMD-04 | Phase 2 | Pending |
-| SIMD-05 | Phase 2 | Pending |
-| SIMD-06 | Phase 2 | Pending |
+| SIMD-05 | Phase 2 | Complete |
+| SIMD-06 | Phase 2 | Complete |
 | SIMD-07 | Phase 2 | Pending |
 | SIMD-08 | Phase 2 | Pending |
 | SIMD-09 | Phase 2 | Pending |
@@ -141,12 +141,12 @@ Which phases cover which requirements. Updated during roadmap creation.
 | GPU-08 | Phase 4 | Pending |
 | GPU-09 | Phase 4 | Pending |
 | GPU-10 | Phase 4 | Pending |
-| TEST-01 | All Phases | Pending |
-| TEST-02 | All Phases | Pending |
+| TEST-01 | All Phases | Complete |
+| TEST-02 | All Phases | Complete |
 | TEST-03 | All Phases | Pending |
 | PERF-01 | All Phases | Pending |
 | PERF-02 | Phase 4 | Pending |
-| API-01 | All Phases | Pending |
+| API-01 | All Phases | Complete |
 | DOC-01 | Phase 4 | Pending |
 | DOC-02 | Phase 4 | Pending |
 
