@@ -60,6 +60,9 @@ pub mod turboquant;
 // Backend abstraction
 pub use backend::{Backend, ScalarBackend};
 
+#[cfg(feature = "simd")]
+pub use backend::{SimdBackend, RuntimeBackend};
+
 pub use error::{Result, TurboQuantError};
 
 // Core compression types
