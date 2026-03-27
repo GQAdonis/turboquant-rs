@@ -53,7 +53,12 @@ Plans:
   4. User compiles with `--features simd` and gets vectorized implementations, or without flag and gets scalar only (compile-time selection)
   5. User sees identical quantization results between SIMD and scalar backends (within f32 precision, verified by tests)
 
-**Plans:** TBD
+**Plans:** 3 plans
+
+Plans:
+- [ ] 02-01-PLAN.md — Feature flag, SimdBackend scaffold, RuntimeBackend with CPU detection
+- [ ] 02-02-PLAN.md — AVX2/NEON FWHT and dot product intrinsics with SAFETY docs
+- [ ] 02-03-PLAN.md — Miri verification, correctness sweep, benchmark comparison
 
 ---
 
@@ -98,12 +103,12 @@ Plans:
 
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
-| 1. Foundation & Quick Wins | 0/4 | Complete    | 2026-03-27 |
-| 2. SIMD Acceleration | 0/0 | Not started | - |
+| 1. Foundation & Quick Wins | 4/4 | Complete    | 2026-03-27 |
+| 2. SIMD Acceleration | 0/3 | Planning complete | - |
 | 3. Batch Operations | 0/0 | Not started | - |
 | 4. GPU Backend | 0/0 | Not started | - |
 
-**Overall:** 0% complete (0/4 phases)
+**Overall:** 25% complete (1/4 phases)
 
 ---
 
