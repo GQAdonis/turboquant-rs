@@ -23,6 +23,7 @@ use crate::{
     error::{Result, TurboQuantError},
     rotation::Rotation,
 };
+use std::cell::RefCell;
 
 // ── Public data type ────────────────────────────────────────────────────────
 
@@ -56,11 +57,24 @@ impl QuantizedVector {
 // ── PolarQuant ──────────────────────────────────────────────────────────────
 
 /// Stage-1 TurboQuant quantizer: rotation + optimal scalar quantization.
-#[derive(Debug, Clone)]
+#[derive(Debug)]
 pub struct PolarQuant<B: Backend = ScalarBackend> {
     rotation: Rotation<B>,
     codebook: Codebook,
     backend: B,
+    scratch: RefCell<Vec<f32>>,
+}
+
+impl<B: Backend> Clone for PolarQuant<B> {
+    fn clone(&self) -> Self {
+        let dim = self.rotation.dim;
+        Self {
+            rotation: self.rotation.clone(),
+            codebook: self.codebook.clone(),
+            backend: self.backend.clone(),
+            scratch: RefCell::new(Vec::with_capacity(dim)),
+        }
+    }
 }
 
 impl PolarQuant<ScalarBackend> {
@@ -79,7 +93,8 @@ impl<B: Backend> PolarQuant<B> {
     pub fn new_with_backend(dim: usize, bits: u8, seed: u64, backend: B) -> Result<Self> {
         let rotation = Rotation::new_with_backend(dim, seed, backend.clone())?;
         let codebook = Codebook::new(bits, dim)?;
-        Ok(Self { rotation, codebook, backend })
+        let scratch = RefCell::new(Vec::with_capacity(dim));
+        Ok(Self { rotation, codebook, backend, scratch })
     }
 
     // ── Quantize ──────────────────────────────────────────────────────────
@@ -142,19 +157,22 @@ impl<B: Backend> PolarQuant<B> {
         self.check_dim(query.len())?;
         self.check_dim(key.dim)?;
 
-        // Rotate the query.
-        let mut q_rot: Vec<f32> = query.to_vec();
-        self.rotation.apply(&mut q_rot);
+        // Compute rotated query using scratch buffer (avoids allocation).
+        // Scope the borrow_mut guard so it drops before we return.
+        let dot = {
+            let mut scratch = self.scratch.borrow_mut();
+            scratch.clear();
+            scratch.extend_from_slice(query);
+            self.rotation.apply(&mut scratch);
 
-        // Unpack key indices.
-        let indices = bitpack::unpack(&key.packed, key.dim, key.bits)?;
+            let indices = bitpack::unpack(&key.packed, key.dim, key.bits)?;
 
-        // Dot product in the rotated space.
-        let dot: f32 = q_rot
-            .iter()
-            .zip(&indices)
-            .map(|(&q, &idx)| q * self.codebook.dequantize_scalar(idx))
-            .sum();
+            scratch
+                .iter()
+                .zip(&indices)
+                .map(|(&q, &idx)| q * self.codebook.dequantize_scalar(idx))
+                .sum::<f32>()
+        }; // borrow_mut guard dropped here
 
         // Scale by key norm (query norm does not factor in here;
         // the caller applies it via the standard softmax attention formula).
@@ -278,5 +296,31 @@ mod tests {
         assert_eq!(qv.norm, 0.0);
         let recon = pq.dequantize(&qv).unwrap();
         assert!(l2_norm(&recon) < 1e-6);
+    }
+
+    #[test]
+    fn inner_product_repeated_calls_no_panic() {
+        let pq = make_pq(3);
+        let key = sine_vec(128, 0.05);
+        let query = sine_vec(128, 0.07);
+        let qv = pq.quantize(&key).unwrap();
+
+        // Call inner_product many times - should never panic from double borrow
+        for _ in 0..1000 {
+            let _ = pq.inner_product(&query, &qv).unwrap();
+        }
+    }
+
+    #[test]
+    fn quantize_after_inner_product() {
+        let pq = make_pq(3);
+        let key = sine_vec(128, 0.05);
+        let query = sine_vec(128, 0.07);
+        let qv = pq.quantize(&key).unwrap();
+
+        // inner_product then quantize should work (no borrow conflict)
+        let _ = pq.inner_product(&query, &qv).unwrap();
+        let qv2 = pq.quantize(&query).unwrap();
+        assert_eq!(qv2.dim, 128);
     }
 }
