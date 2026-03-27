@@ -9,6 +9,9 @@ use criterion::{black_box, criterion_group, criterion_main, BenchmarkId, Criteri
 use std::time::Duration;
 use turboquant::{KvCache, PolarQuant};
 
+#[cfg(feature = "simd")]
+use turboquant::{Backend, ScalarBackend, SimdBackend};
+
 // ── Helpers ─────────────────────────────────────────────────────────────────
 
 fn sine_vec(dim: usize, freq: f32) -> Vec<f32> {
@@ -137,10 +140,85 @@ fn bench_quantize_throughput(c: &mut Criterion) {
     group.finish();
 }
 
+// ── SIMD vs Scalar comparison benchmarks ───────────────────────────────────
+
+#[cfg(feature = "simd")]
+fn bench_simd_vs_scalar(c: &mut Criterion) {
+    let mut group = c.benchmark_group("simd_vs_scalar");
+    group.warm_up_time(Duration::from_secs(2));
+    group.measurement_time(Duration::from_secs(5));
+
+    let scalar = ScalarBackend;
+    let simd = SimdBackend;
+
+    // FWHT comparison across dimensions
+    for dim in [16, 32, 64, 128, 256, 512] {
+        let data_template: Vec<f32> = (0..dim).map(|i| (i as f32 * 0.1).sin()).collect();
+
+        group.bench_with_input(
+            BenchmarkId::new("fwht_scalar", dim),
+            &dim,
+            |b, _| {
+                let mut data = data_template.clone();
+                b.iter(|| {
+                    // Reset data each iteration for fair comparison
+                    data.copy_from_slice(&data_template);
+                    scalar.fwht_normalized_inplace(black_box(&mut data));
+                    black_box(&data);
+                })
+            },
+        );
+
+        group.bench_with_input(
+            BenchmarkId::new("fwht_simd", dim),
+            &dim,
+            |b, _| {
+                let mut data = data_template.clone();
+                b.iter(|| {
+                    data.copy_from_slice(&data_template);
+                    simd.fwht_normalized_inplace(black_box(&mut data));
+                    black_box(&data);
+                })
+            },
+        );
+    }
+
+    // Dot product comparison across dimensions
+    for dim in [16, 32, 64, 128, 256, 512] {
+        let a: Vec<f32> = (0..dim).map(|i| (i as f32 * 0.1).sin()).collect();
+        let b_vec: Vec<f32> = (0..dim).map(|i| (i as f32 * 0.07).cos()).collect();
+
+        group.bench_with_input(
+            BenchmarkId::new("dot_scalar", dim),
+            &dim,
+            |b, _| b.iter(|| scalar.dot_product(black_box(&a), black_box(&b_vec))),
+        );
+
+        group.bench_with_input(
+            BenchmarkId::new("dot_simd", dim),
+            &dim,
+            |b, _| b.iter(|| simd.dot_product(black_box(&a), black_box(&b_vec))),
+        );
+    }
+
+    group.finish();
+}
+
+#[cfg(feature = "simd")]
+criterion_group!(
+    benches,
+    bench_attention_e2e,
+    bench_inner_product_throughput,
+    bench_quantize_throughput,
+    bench_simd_vs_scalar
+);
+
+#[cfg(not(feature = "simd"))]
 criterion_group!(
     benches,
     bench_attention_e2e,
     bench_inner_product_throughput,
     bench_quantize_throughput
 );
+
 criterion_main!(benches);
