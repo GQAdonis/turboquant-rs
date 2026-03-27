@@ -12,9 +12,9 @@ Requirements for production-ready optimization milestone. Each maps to roadmap p
 - [x] **FOUND-01**: Replace panic! with Result in bitpack::pack() and bitpack::unpack()
 - [x] **FOUND-02**: Add #[must_use] attributes to all functions returning computed values
 - [x] **FOUND-03**: Add power-of-two assertion to fwht_inplace() in release builds
-- [ ] **FOUND-04**: Define Backend trait for CPU/SIMD/GPU abstraction
-- [ ] **FOUND-05**: Extract ScalarBackend implementing Backend trait
-- [ ] **FOUND-06**: Refactor PolarQuant to use Backend trait with static dispatch
+- [x] **FOUND-04**: Define Backend trait for CPU/SIMD/GPU abstraction
+- [x] **FOUND-05**: Extract ScalarBackend implementing Backend trait
+- [x] **FOUND-06**: Refactor PolarQuant to use Backend trait with static dispatch
 - [ ] **FOUND-07**: Add scratch buffer reuse to PolarQuant::inner_product()
 - [x] **FOUND-08**: Add integration benchmarks for realistic workloads
 
@@ -110,9 +110,9 @@ Which phases cover which requirements. Updated during roadmap creation.
 | FOUND-01 | Phase 1 | Complete |
 | FOUND-02 | Phase 1 | Complete |
 | FOUND-03 | Phase 1 | Complete |
-| FOUND-04 | Phase 1 | Pending |
-| FOUND-05 | Phase 1 | Pending |
-| FOUND-06 | Phase 1 | Pending |
+| FOUND-04 | Phase 1 | Complete |
+| FOUND-05 | Phase 1 | Complete |
+| FOUND-06 | Phase 1 | Complete |
 | FOUND-07 | Phase 1 | Pending |
 | FOUND-08 | Phase 1 | Complete |
 | SIMD-01 | Phase 2 | Pending |
