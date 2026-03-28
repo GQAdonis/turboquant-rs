@@ -192,6 +192,81 @@ fn bench_batch_of_1_regression(c: &mut Criterion) {
     group.finish();
 }
 
+// ── Batch-of-64 throughput benchmarks ──────────────────────────────────────
+
+fn bench_batch_64_throughput(c: &mut Criterion) {
+    let mut group = c.benchmark_group("batch_64_throughput");
+    group.warm_up_time(Duration::from_secs(2));
+    group.measurement_time(Duration::from_secs(10));
+
+    let dim = 128;
+    let bits = 3;
+    let pq = PolarQuant::new(dim, bits, 42).unwrap();
+
+    // --- Quantize: sequential-64 vs batch-64 ---
+    let vecs: Vec<Vec<f32>> = (0..64)
+        .map(|i| sine_vec(dim, 0.01 * i as f32))
+        .collect();
+
+    group.bench_function("quantize_sequential_64", |b| {
+        b.iter(|| {
+            let mut results = Vec::with_capacity(64);
+            for v in &vecs {
+                results.push(pq.quantize(black_box(v)).unwrap());
+            }
+            black_box(results)
+        })
+    });
+
+    group.bench_function("quantize_batch_64", |b| {
+        b.iter(|| pq.batch_quantize(black_box(&vecs)).unwrap())
+    });
+
+    // --- Inner product: sequential-64 vs batch-64 ---
+    let query = sine_vec(dim, 0.07);
+    let keys: Vec<_> = vecs.iter()
+        .map(|v| pq.quantize(v).unwrap())
+        .collect();
+
+    group.bench_function("inner_product_sequential_64", |b| {
+        b.iter(|| {
+            let mut results = Vec::with_capacity(64);
+            for k in &keys {
+                results.push(pq.inner_product(black_box(&query), black_box(k)).unwrap());
+            }
+            black_box(results)
+        })
+    });
+
+    group.bench_function("inner_product_batch_64", |b| {
+        b.iter(|| pq.batch_inner_product(black_box(&query), black_box(&keys)).unwrap())
+    });
+
+    // --- Attend: sequential-64 vs batch-64 ---
+    let mut cache = KvCache::new(dim, bits, 42, 99).unwrap();
+    fill_cache(&mut cache, 512, dim);  // 512 cached entries, realistic size
+
+    let queries: Vec<Vec<f32>> = (0..64)
+        .map(|i| sine_vec(dim, 0.01 * i as f32 + 0.5))
+        .collect();
+
+    group.bench_function("attend_sequential_64", |b| {
+        b.iter(|| {
+            let mut results = Vec::with_capacity(64);
+            for q in &queries {
+                results.push(cache.attend(black_box(q)).unwrap());
+            }
+            black_box(results)
+        })
+    });
+
+    group.bench_function("attend_batch_64", |b| {
+        b.iter(|| cache.batch_attend(black_box(&queries)).unwrap())
+    });
+
+    group.finish();
+}
+
 // ── SIMD vs Scalar comparison benchmarks ───────────────────────────────────
 
 #[cfg(feature = "simd")]
@@ -263,6 +338,7 @@ criterion_group!(
     bench_inner_product_throughput,
     bench_quantize_throughput,
     bench_batch_of_1_regression,
+    bench_batch_64_throughput,
     bench_simd_vs_scalar
 );
 
@@ -272,7 +348,8 @@ criterion_group!(
     bench_attention_e2e,
     bench_inner_product_throughput,
     bench_quantize_throughput,
-    bench_batch_of_1_regression
+    bench_batch_of_1_regression,
+    bench_batch_64_throughput
 );
 
 criterion_main!(benches);
