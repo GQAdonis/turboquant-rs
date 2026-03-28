@@ -77,11 +77,11 @@ Plans:
   4. User processing 64-vector batches experiences measurable throughput improvement over 64 sequential single-vector calls (benchmarked)
   5. User's batch operations leverage CPU parallelism automatically (rayon integration, multi-core utilization)
 
-**Plans:** 3 plans
+**Plans:** 2/3 plans complete
 
 Plans:
-- [ ] 03-01-PLAN.md — Rayon dependency + batch APIs on PolarQuant (batch_quantize, batch_inner_product)
-- [ ] 03-02-PLAN.md — Clone for TurboQuant/KvCache + batch_attend on KvCache
+- [x] 03-01-PLAN.md — Rayon dependency + batch APIs on PolarQuant (batch_quantize, batch_inner_product)
+- [x] 03-02-PLAN.md — Clone for TurboQuant/KvCache + batch_attend on KvCache
 - [ ] 03-03-PLAN.md — Batch-of-1 regression and batch-of-64 throughput benchmarks
 
 ---
