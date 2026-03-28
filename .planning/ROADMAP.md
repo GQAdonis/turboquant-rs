@@ -101,7 +101,14 @@ Plans:
   5. User measures 3-8x combined speedup on realistic attention hot path compared to Phase 0 baseline (integration benchmark validation)
   6. User accesses performance guide with benchmark results explaining when to use GPU vs CPU (documentation)
 
-**Plans:** TBD
+**Plans:** 5 plans
+
+Plans:
+- [ ] 04-01-PLAN.md — Feature flag + cudarc dependency + GpuBackend scaffold + error variants
+- [ ] 04-02-PLAN.md — CUDA kernels (FWHT + attention) + build.rs PTX compilation
+- [ ] 04-03-PLAN.md — GPU memory pooling + batch dispatch integration
+- [ ] 04-04-PLAN.md — GPU benchmarks + combined Phase 1-4 speedup validation
+- [ ] 04-05-PLAN.md — Feature flags and performance guide documentation
 
 ---
 
@@ -112,9 +119,9 @@ Plans:
 | 1. Foundation & Quick Wins | 4/4 | Complete    | 2026-03-27 |
 | 2. SIMD Acceleration | 0/3 | Complete    | 2026-03-27 |
 | 3. Batch Operations | 0/3 | Complete    | 2026-03-28 |
-| 4. GPU Backend | 0/0 | Not started | - |
+| 4. GPU Backend | 0/5 | Planning complete | - |
 
-**Overall:** 50% complete (2/4 phases)
+**Overall:** 75% complete (3/4 phases)
 
 ---
 
@@ -169,4 +176,4 @@ Phase 4 (GPU)
 
 ---
 
-*Last updated: 2026-03-27*
+*Last updated: 2026-03-28*
