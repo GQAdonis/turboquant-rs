@@ -32,11 +32,11 @@ Requirements for production-ready optimization milestone. Each maps to roadmap p
 
 ### Batch Operations (Phase 3)
 
-- [ ] **BATCH-01**: Add batch_quantize(&[Vec<f32>]) API to PolarQuant
-- [ ] **BATCH-02**: Add batch_inner_product(query, &[QuantizedVector]) API
+- [x] **BATCH-01**: Add batch_quantize(&[Vec<f32>]) API to PolarQuant
+- [x] **BATCH-02**: Add batch_inner_product(query, &[QuantizedVector]) API
 - [ ] **BATCH-03**: Add batch_attend(query) to KvCache for multi-query attention
-- [ ] **BATCH-04**: Implement zero-copy batch patterns (contiguous memory layout)
-- [ ] **BATCH-05**: Add parallel CPU batch processing with rayon
+- [x] **BATCH-04**: Implement zero-copy batch patterns (contiguous memory layout)
+- [x] **BATCH-05**: Add parallel CPU batch processing with rayon
 - [ ] **BATCH-06**: Verify batch-of-1 performance matches single-vector API
 - [ ] **BATCH-07**: Demonstrate batch-of-64 performance improvement
 
@@ -124,11 +124,11 @@ Which phases cover which requirements. Updated during roadmap creation.
 | SIMD-07 | Phase 2 | Complete |
 | SIMD-08 | Phase 2 | Complete |
 | SIMD-09 | Phase 2 | Complete |
-| BATCH-01 | Phase 3 | Pending |
-| BATCH-02 | Phase 3 | Pending |
+| BATCH-01 | Phase 3 | Complete |
+| BATCH-02 | Phase 3 | Complete |
 | BATCH-03 | Phase 3 | Pending |
-| BATCH-04 | Phase 3 | Pending |
-| BATCH-05 | Phase 3 | Pending |
+| BATCH-04 | Phase 3 | Complete |
+| BATCH-05 | Phase 3 | Complete |
 | BATCH-06 | Phase 3 | Pending |
 | BATCH-07 | Phase 3 | Pending |
 | GPU-01 | Phase 4 | Pending |
