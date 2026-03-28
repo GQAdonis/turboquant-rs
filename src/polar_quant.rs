@@ -324,3 +324,149 @@ mod tests {
         assert_eq!(qv2.dim, 128);
     }
 }
+
+#[cfg(test)]
+mod batch_tests {
+    use super::*;
+
+    fn make_pq(bits: u8) -> PolarQuant {
+        PolarQuant::new(128, bits, 42).unwrap()
+    }
+
+    fn sine_vec(dim: usize, freq: f32) -> Vec<f32> {
+        (0..dim).map(|i| (i as f32 * freq).sin()).collect()
+    }
+
+    fn dot(a: &[f32], b: &[f32]) -> f32 {
+        a.iter().zip(b).map(|(&x, &y)| x * y).sum()
+    }
+
+    #[test]
+    fn batch_quantize_length_correctness() {
+        let pq = make_pq(3);
+        let vecs: Vec<Vec<f32>> = (0..10).map(|i| sine_vec(128, 0.1 + i as f32 * 0.01)).collect();
+        let result = pq.batch_quantize(&vecs).unwrap();
+
+        assert_eq!(result.len(), 10, "batch_quantize should return 10 vectors");
+        for qv in &result {
+            assert_eq!(qv.dim, 128);
+            assert_eq!(qv.bits, 3);
+            assert_eq!(qv.byte_size(), 52); // 4 + 48 for 128-dim 3-bit
+        }
+    }
+
+    #[test]
+    fn batch_quantize_empty() {
+        let pq = make_pq(3);
+        let vecs: Vec<Vec<f32>> = vec![];
+        let result = pq.batch_quantize(&vecs).unwrap();
+        assert!(result.is_empty(), "empty input should return empty result");
+    }
+
+    #[test]
+    fn batch_quantize_dimension_mismatch() {
+        let pq = make_pq(3);
+        let vecs = vec![
+            sine_vec(128, 0.1),
+            sine_vec(64, 0.2),  // Wrong dimension!
+        ];
+        let result = pq.batch_quantize(&vecs);
+        assert!(result.is_err(), "should fail on dimension mismatch");
+    }
+
+    #[test]
+    fn batch_quantize_slices_equivalence() {
+        let pq = make_pq(3);
+        let vecs: Vec<Vec<f32>> = (0..5).map(|i| sine_vec(128, 0.1 + i as f32 * 0.01)).collect();
+
+        let result_owned = pq.batch_quantize(&vecs).unwrap();
+
+        let slices: Vec<&[f32]> = vecs.iter().map(|v| v.as_slice()).collect();
+        let result_slices = pq.batch_quantize_slices(&slices).unwrap();
+
+        assert_eq!(result_owned.len(), result_slices.len());
+        for (owned, sliced) in result_owned.iter().zip(&result_slices) {
+            assert_eq!(owned.norm, sliced.norm);
+            assert_eq!(owned.packed, sliced.packed);
+            assert_eq!(owned.dim, sliced.dim);
+            assert_eq!(owned.bits, sliced.bits);
+        }
+    }
+
+    #[test]
+    fn batch_inner_product_length_correctness() {
+        let pq = make_pq(3);
+        let keys: Vec<Vec<f32>> = (0..20).map(|i| sine_vec(128, 0.1 + i as f32 * 0.01)).collect();
+        let query = sine_vec(128, 0.05);
+
+        let qvs: Vec<QuantizedVector> = keys.iter().map(|k| pq.quantize(k).unwrap()).collect();
+        let result = pq.batch_inner_product(&query, &qvs).unwrap();
+
+        assert_eq!(result.len(), 20, "batch_inner_product should return 20 results");
+    }
+
+    #[test]
+    fn batch_inner_product_sequential_equivalence() {
+        let pq = make_pq(3);
+        let keys: Vec<Vec<f32>> = (0..10).map(|i| sine_vec(128, 0.1 + i as f32 * 0.01)).collect();
+        let query = sine_vec(128, 0.05);
+
+        let qvs: Vec<QuantizedVector> = keys.iter().map(|k| pq.quantize(k).unwrap()).collect();
+
+        // Sequential approach
+        let sequential: Vec<f32> = qvs.iter()
+            .map(|qv| pq.inner_product(&query, qv).unwrap())
+            .collect();
+
+        // Batch approach
+        let batch = pq.batch_inner_product(&query, &qvs).unwrap();
+
+        assert_eq!(sequential.len(), batch.len());
+        for (seq, bat) in sequential.iter().zip(&batch) {
+            assert!((seq - bat).abs() < 1e-5, "sequential and batch differ: {seq} vs {bat}");
+        }
+    }
+
+    #[test]
+    fn batch_quantize_single_vector_fast_path() {
+        let pq = make_pq(3);
+        let vec = sine_vec(128, 0.1);
+
+        let single = pq.quantize(&vec).unwrap();
+        let batch = pq.batch_quantize(&[vec.clone()]).unwrap();
+
+        assert_eq!(batch.len(), 1);
+        assert_eq!(single.norm, batch[0].norm);
+        assert_eq!(single.packed, batch[0].packed);
+        assert_eq!(single.dim, batch[0].dim);
+        assert_eq!(single.bits, batch[0].bits);
+    }
+
+    #[test]
+    fn batch_inner_product_single_key_fast_path() {
+        let pq = make_pq(3);
+        let key = sine_vec(128, 0.1);
+        let query = sine_vec(128, 0.05);
+
+        let qv = pq.quantize(&key).unwrap();
+        let single = pq.inner_product(&query, &qv).unwrap();
+        let batch = pq.batch_inner_product(&query, &[qv]).unwrap();
+
+        assert_eq!(batch.len(), 1);
+        assert!((single - batch[0]).abs() < 1e-6);
+    }
+
+    #[test]
+    fn batch_quantize_64_vectors_parallel() {
+        let pq = make_pq(3);
+        let vecs: Vec<Vec<f32>> = (0..64).map(|i| sine_vec(128, 0.1 + i as f32 * 0.001)).collect();
+
+        let result = pq.batch_quantize(&vecs).unwrap();
+
+        assert_eq!(result.len(), 64);
+        for qv in &result {
+            assert_eq!(qv.dim, 128);
+            assert_eq!(qv.bits, 3);
+        }
+    }
+}
