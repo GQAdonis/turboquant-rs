@@ -50,7 +50,7 @@ Requirements for production-ready optimization milestone. Each maps to roadmap p
 - [x] **GPU-06**: Add batch size threshold for CPU vs GPU dispatch (≥32)
 - [x] **GPU-07**: Add feature flag `gpu` for optional CUDA support
 - [x] **GPU-08**: Handle GPU unavailable errors gracefully with clear messages
-- [ ] **GPU-09**: Verify GPU batch ≥32 faster than CPU batch
+- [x] **GPU-09**: Verify GPU batch ≥32 faster than CPU batch
 - [x] **GPU-10**: Verify GPU batch <32 automatically uses CPU fallback
 
 ### Cross-Cutting (All Phases)
@@ -59,7 +59,7 @@ Requirements for production-ready optimization milestone. Each maps to roadmap p
 - [x] **TEST-02**: Add correctness tests for each new backend
 - [x] **TEST-03**: Add performance regression tests
 - [x] **PERF-01**: Achieve <2% inner product error (maintain accuracy)
-- [ ] **PERF-02**: Demonstrate 3-8x combined speedup on attention hot path
+- [x] **PERF-02**: Demonstrate 3-8x combined speedup on attention hot path
 - [x] **API-01**: Maintain backward compatibility (existing API unchanged)
 - [x] **DOC-01**: Document feature flags and backend selection
 - [x] **DOC-02**: Add performance guide with benchmark results
@@ -139,13 +139,13 @@ Which phases cover which requirements. Updated during roadmap creation.
 | GPU-06 | Phase 4 | Complete |
 | GPU-07 | Phase 4 | Complete |
 | GPU-08 | Phase 4 | Complete |
-| GPU-09 | Phase 4 | Pending |
+| GPU-09 | Phase 4 | Complete |
 | GPU-10 | Phase 4 | Complete |
 | TEST-01 | All Phases | Complete |
 | TEST-02 | All Phases | Complete |
 | TEST-03 | All Phases | Complete |
 | PERF-01 | All Phases | Complete |
-| PERF-02 | Phase 4 | Pending |
+| PERF-02 | Phase 4 | Complete |
 | API-01 | All Phases | Complete |
 | DOC-01 | Phase 4 | Complete |
 | DOC-02 | Phase 4 | Complete |
