@@ -12,10 +12,16 @@ mod scalar;
 #[cfg(feature = "simd")]
 mod simd;
 
+#[cfg(feature = "gpu")]
+mod gpu;
+
 pub use scalar::ScalarBackend;
 
 #[cfg(feature = "simd")]
 pub use simd::{SimdBackend, RuntimeBackend};
+
+#[cfg(feature = "gpu")]
+pub use gpu::GpuBackend;
 
 use crate::error::Result;
 

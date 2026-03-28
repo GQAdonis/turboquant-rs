@@ -63,6 +63,9 @@ pub use backend::{Backend, ScalarBackend};
 #[cfg(feature = "simd")]
 pub use backend::{SimdBackend, RuntimeBackend};
 
+#[cfg(feature = "gpu")]
+pub use backend::GpuBackend;
+
 pub use error::{Result, TurboQuantError};
 
 // Core compression types
