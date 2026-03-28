@@ -6,8 +6,13 @@
 
 use crate::backend::ScalarBackend;
 use crate::error::{Result, TurboQuantError};
-use cudarc::driver::{CudaDevice, CudaStream};
-use std::sync::Arc;
+use cudarc::driver::{CudaDevice, CudaSlice, LaunchAsync, LaunchConfig};
+use cudarc::nvrtc::Ptx;
+use std::sync::{Arc, Mutex};
+
+// PTX modules embedded from build output
+const FWHT_PTX: &str = include_str!(concat!(env!("OUT_DIR"), "/fwht.ptx"));
+const ATTENTION_PTX: &str = include_str!(concat!(env!("OUT_DIR"), "/attention.ptx"));
 
 /// CUDA GPU compute backend.
 ///
@@ -18,6 +23,7 @@ use std::sync::Arc;
 pub struct GpuBackend {
     device: Arc<CudaDevice>,
     scalar: ScalarBackend,
+    modules_loaded: Arc<Mutex<bool>>,
 }
 
 impl GpuBackend {
@@ -47,12 +53,166 @@ impl GpuBackend {
         Ok(Self {
             device: Arc::new(device),
             scalar: ScalarBackend,
+            modules_loaded: Arc::new(Mutex::new(false)),
         })
     }
 
     /// Access the underlying CUDA device.
     pub fn device(&self) -> &Arc<CudaDevice> {
         &self.device
+    }
+
+    /// Ensure CUDA kernel modules are loaded (lazy, thread-safe).
+    fn ensure_modules_loaded(&self) -> Result<()> {
+        let mut loaded = self.modules_loaded.lock().unwrap();
+        if !*loaded {
+            self.device
+                .load_ptx(Ptx::from_src(FWHT_PTX), "fwht_module", &["fwht_batch"])
+                .map_err(|e| TurboQuantError::GpuKernelFailed {
+                    reason: format!("Failed to load FWHT PTX: {}", e),
+                })?;
+
+            self.device
+                .load_ptx(
+                    Ptx::from_src(ATTENTION_PTX),
+                    "attention_module",
+                    &["batch_dot_product", "batch_dequantize"],
+                )
+                .map_err(|e| TurboQuantError::GpuKernelFailed {
+                    reason: format!("Failed to load attention PTX: {}", e),
+                })?;
+
+            *loaded = true;
+        }
+        Ok(())
+    }
+
+    /// Launch batch FWHT kernel on GPU.
+    ///
+    /// `d_data` must be a device buffer of size `batch_size * dim`.
+    /// Modifies data in-place on device.
+    pub fn launch_fwht_batch(
+        &self,
+        d_data: &mut CudaSlice<f32>,
+        dim: usize,
+        batch_size: usize,
+    ) -> Result<()> {
+        self.ensure_modules_loaded()?;
+
+        let threads_per_block = dim.min(256) as u32;
+        let shared_mem_bytes = (dim * std::mem::size_of::<f32>()) as u32;
+        let cfg = LaunchConfig {
+            grid_dim: (batch_size as u32, 1, 1),
+            block_dim: (threads_per_block, 1, 1),
+            shared_mem_bytes,
+        };
+
+        let func = self
+            .device
+            .get_func("fwht_module", "fwht_batch")
+            .ok_or_else(|| TurboQuantError::GpuKernelFailed {
+                reason: "fwht_batch kernel not found in loaded module".to_string(),
+            })?;
+
+        // SAFETY: kernel params match fwht_batch signature
+        unsafe { func.launch(cfg, (d_data, dim as i32, batch_size as i32)) }.map_err(|e| {
+            TurboQuantError::GpuKernelFailed {
+                reason: format!("fwht_batch launch failed: {}", e),
+            }
+        })
+    }
+
+    /// Launch batch dot product kernel on GPU.
+    ///
+    /// Computes: results[i] = dot(query, keys[i]) * norms[i]
+    pub fn launch_batch_dot_product(
+        &self,
+        d_query: &CudaSlice<f32>,
+        d_keys: &CudaSlice<f32>,
+        d_norms: &CudaSlice<f32>,
+        d_results: &mut CudaSlice<f32>,
+        dim: usize,
+        batch_size: usize,
+    ) -> Result<()> {
+        self.ensure_modules_loaded()?;
+
+        let threads_per_block = dim.min(256) as u32;
+        let shared_mem_bytes = (threads_per_block as usize * std::mem::size_of::<f32>()) as u32;
+        let cfg = LaunchConfig {
+            grid_dim: (batch_size as u32, 1, 1),
+            block_dim: (threads_per_block, 1, 1),
+            shared_mem_bytes,
+        };
+
+        let func = self
+            .device
+            .get_func("attention_module", "batch_dot_product")
+            .ok_or_else(|| TurboQuantError::GpuKernelFailed {
+                reason: "batch_dot_product kernel not found".to_string(),
+            })?;
+
+        unsafe {
+            func.launch(
+                cfg,
+                (
+                    d_query,
+                    d_keys,
+                    d_norms,
+                    d_results,
+                    dim as i32,
+                    batch_size as i32,
+                ),
+            )
+        }
+        .map_err(|e| TurboQuantError::GpuKernelFailed {
+            reason: format!("batch_dot_product launch failed: {}", e),
+        })
+    }
+
+    /// Launch batch dequantize kernel on GPU.
+    pub fn launch_batch_dequantize(
+        &self,
+        d_packed: &CudaSlice<u8>,
+        d_centroids: &CudaSlice<f32>,
+        d_output: &mut CudaSlice<f32>,
+        dim: usize,
+        bits: u8,
+        packed_bytes_per_vec: usize,
+        batch_size: usize,
+    ) -> Result<()> {
+        self.ensure_modules_loaded()?;
+
+        let threads_per_block = dim.min(256) as u32;
+        let cfg = LaunchConfig {
+            grid_dim: (batch_size as u32, 1, 1),
+            block_dim: (threads_per_block, 1, 1),
+            shared_mem_bytes: 0,
+        };
+
+        let func = self
+            .device
+            .get_func("attention_module", "batch_dequantize")
+            .ok_or_else(|| TurboQuantError::GpuKernelFailed {
+                reason: "batch_dequantize kernel not found".to_string(),
+            })?;
+
+        unsafe {
+            func.launch(
+                cfg,
+                (
+                    d_packed,
+                    d_centroids,
+                    d_output,
+                    dim as i32,
+                    bits as i32,
+                    packed_bytes_per_vec as i32,
+                    batch_size as i32,
+                ),
+            )
+        }
+        .map_err(|e| TurboQuantError::GpuKernelFailed {
+            reason: format!("batch_dequantize launch failed: {}", e),
+        })
     }
 }
 
@@ -124,6 +284,47 @@ mod tests {
             let b = vec![5.0f32, 6.0, 7.0, 8.0];
             let result = backend.dot_product(&a, &b);
             assert!((result - 70.0).abs() < 1e-6);
+        }
+    }
+
+    #[test]
+    fn gpu_fwht_batch_matches_scalar() {
+        let gpu = match GpuBackend::new() {
+            Ok(g) => g,
+            Err(_) => return, // Skip if no GPU
+        };
+
+        let dim = 128;
+        let batch_size = 4;
+        let scalar = ScalarBackend;
+
+        // Create test vectors
+        let mut cpu_data: Vec<f32> = (0..batch_size * dim)
+            .map(|i| (i as f32 * 0.01).sin())
+            .collect();
+
+        // CPU reference
+        let mut cpu_ref = cpu_data.clone();
+        for b in 0..batch_size {
+            let start = b * dim;
+            scalar.fwht_normalized_inplace(&mut cpu_ref[start..start + dim]);
+        }
+
+        // GPU
+        let mut d_data = gpu
+            .device
+            .htod_sync_copy(&cpu_data)
+            .expect("htod copy");
+        gpu.launch_fwht_batch(&mut d_data, dim, batch_size)
+            .expect("kernel launch");
+        let gpu_result = gpu.device.dtoh_sync_copy(&d_data).expect("dtoh copy");
+
+        // Compare
+        for (i, (cpu_val, gpu_val)) in cpu_ref.iter().zip(&gpu_result).enumerate() {
+            assert!(
+                (cpu_val - gpu_val).abs() < 1e-4,
+                "FWHT mismatch at index {i}: CPU={cpu_val}, GPU={gpu_val}"
+            );
         }
     }
 }
