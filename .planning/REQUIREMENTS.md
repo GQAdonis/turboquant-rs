@@ -46,12 +46,12 @@ Requirements for production-ready optimization milestone. Each maps to roadmap p
 - [x] **GPU-02**: Implement GpuBackend with CUDA stream management
 - [x] **GPU-03**: Write CUDA kernel for FWHT butterfly operations
 - [x] **GPU-04**: Write CUDA kernel for batch attention logits
-- [ ] **GPU-05**: Implement GPU memory pooling for batch buffers
-- [ ] **GPU-06**: Add batch size threshold for CPU vs GPU dispatch (≥32)
+- [x] **GPU-05**: Implement GPU memory pooling for batch buffers
+- [x] **GPU-06**: Add batch size threshold for CPU vs GPU dispatch (≥32)
 - [x] **GPU-07**: Add feature flag `gpu` for optional CUDA support
 - [x] **GPU-08**: Handle GPU unavailable errors gracefully with clear messages
 - [ ] **GPU-09**: Verify GPU batch ≥32 faster than CPU batch
-- [ ] **GPU-10**: Verify GPU batch <32 automatically uses CPU fallback
+- [x] **GPU-10**: Verify GPU batch <32 automatically uses CPU fallback
 
 ### Cross-Cutting (All Phases)
 
@@ -135,12 +135,12 @@ Which phases cover which requirements. Updated during roadmap creation.
 | GPU-02 | Phase 4 | Complete |
 | GPU-03 | Phase 4 | Complete |
 | GPU-04 | Phase 4 | Complete |
-| GPU-05 | Phase 4 | Pending |
-| GPU-06 | Phase 4 | Pending |
+| GPU-05 | Phase 4 | Complete |
+| GPU-06 | Phase 4 | Complete |
 | GPU-07 | Phase 4 | Complete |
 | GPU-08 | Phase 4 | Complete |
 | GPU-09 | Phase 4 | Pending |
-| GPU-10 | Phase 4 | Pending |
+| GPU-10 | Phase 4 | Complete |
 | TEST-01 | All Phases | Complete |
 | TEST-02 | All Phases | Complete |
 | TEST-03 | All Phases | Complete |

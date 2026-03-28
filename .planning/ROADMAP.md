@@ -104,9 +104,9 @@ Plans:
 **Plans:** 5 plans
 
 Plans:
-- [ ] 04-01-PLAN.md — Feature flag + cudarc dependency + GpuBackend scaffold + error variants
-- [ ] 04-02-PLAN.md — CUDA kernels (FWHT + attention) + build.rs PTX compilation
-- [ ] 04-03-PLAN.md — GPU memory pooling + batch dispatch integration
+- [x] 04-01-PLAN.md — Feature flag + cudarc dependency + GpuBackend scaffold + error variants
+- [x] 04-02-PLAN.md — CUDA kernels (FWHT + attention) + build.rs PTX compilation
+- [x] 04-03-PLAN.md — GPU memory pooling + batch dispatch integration
 - [ ] 04-04-PLAN.md — GPU benchmarks + combined Phase 1-4 speedup validation
 - [ ] 04-05-PLAN.md — Feature flags and performance guide documentation
 
@@ -117,11 +117,11 @@ Plans:
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
 | 1. Foundation & Quick Wins | 4/4 | Complete    | 2026-03-27 |
-| 2. SIMD Acceleration | 0/3 | Complete    | 2026-03-27 |
-| 3. Batch Operations | 0/3 | Complete    | 2026-03-28 |
-| 4. GPU Backend | 0/5 | Planning complete | - |
+| 2. SIMD Acceleration | 3/3 | Complete    | 2026-03-27 |
+| 3. Batch Operations | 3/3 | Complete    | 2026-03-28 |
+| 4. GPU Backend | 3/5 | In Progress | - |
 
-**Overall:** 75% complete (3/4 phases)
+**Overall:** 75% complete (3/4 phases, Phase 4 at 60%)
 
 ---
 

@@ -3,14 +3,14 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
 status: executing
-stopped_at: Completed 04-02-PLAN.md
-last_updated: "2026-03-28T13:08:32.299Z"
+stopped_at: Completed 04-03-PLAN.md
+last_updated: "2026-03-28T13:13:12Z"
 progress:
   total_phases: 4
   completed_phases: 3
   total_plans: 15
-  completed_plans: 12
-  percent: 80
+  completed_plans: 13
+  percent: 86
 ---
 
 # Project State: TurboQuant Rust
@@ -31,14 +31,14 @@ progress:
 ## Current Position
 
 **Phase:** 04-gpu-backend
-**Plan:** 04-02 (completed)
+**Plan:** 04-03 (completed)
 **Status:** Ready to execute
 
 **Progress:**
-[████████░░] 80%
-Phase 4: [██████████░░░░░░░░░░] 50% (2/4 plans complete)
+[████████░░] 86%
+Phase 4: [███████████████░░░░░] 75% (3/4 plans complete)
 
-**Next Action:** Execute 04-03
+**Next Action:** Execute 04-04
 
 ---
 
@@ -125,6 +125,10 @@ Phase 4: [██████████░░░░░░░░░░] 50% (2/4
 - [Phase 04-gpu-backend]: Separate .cu files over inline CUDA for traditional PTX compilation
 - [Phase 04-gpu-backend]: Lazy PTX module loading to avoid GPU cost for single-vector operations
 - [Phase 04-gpu-backend]: sm_70 architecture target covers Volta+ GPUs (T4, A100, RTX 20xx+)
+| Phase 04-gpu-backend P03 | 216 | 2 tasks | 4 files |
+- [Phase 04-03]: Per-size GPU buffer pooling (HashMap<usize, Vec<CudaSlice<T>>>) amortizes cudaMalloc overhead
+- [Phase 04-03]: GPU_BATCH_THRESHOLD=32 routes large batches to GPU, small to CPU
+- [Phase 04-03]: Dispatch at API boundary via *_dispatch methods on PolarQuant<GpuBackend> and KvCache<GpuBackend>
 
 ### Todos
 
@@ -193,23 +197,23 @@ Phase 4: [██████████░░░░░░░░░░] 50% (2/4
 ## Session Continuity
 
 **Session started:** 2026-03-27
-**Last session:** 2026-03-28T13:08:32.296Z
-**Stopped at:** Completed 04-02-PLAN.md
+**Last session:** 2026-03-28T13:13:12Z
+**Stopped at:** Completed 04-03-PLAN.md
 **Mode:** yolo (autonomous execution)
 **Granularity:** standard (5-8 phases)
 
 **Context for next session:**
-- Phase 3 batch operations: COMPLETE (3/3 plans)
-- PolarQuant batch_quantize and batch_inner_product implemented (03-01)
-- KvCache batch_attend and batch_attend_slices implemented (03-02)
-- Batch API benchmarks validate BATCH-06 and BATCH-07 (03-03)
-- Thread-local reconstruction pattern established for RefCell types
-- All tests passing, benchmarks show 3x speedup on attend_batch_64
-- Next: Phase 4 (GPU acceleration)
+- Phase 4 GPU backend: 75% complete (3/4 plans)
+- GpuBackend scaffold with ScalarBackend delegation (04-01)
+- CUDA kernels for batch FWHT, dequantize, dot product (04-02)
+- GPU memory pool and CPU/GPU dispatch at threshold 32 (04-03)
+- All GPU code behind #[cfg(feature = "gpu")] - zero impact on non-GPU builds
+- 57 tests passing, builds clean without GPU feature
+- Next: Execute 04-04 (final GPU plan - benchmarks or integration)
 
 **To resume:**
-1. Plan Phase 4 (GPU acceleration) - final phase
-2. Execute Phase 4 plans
+1. Execute Phase 4 Plan 04 (final GPU plan)
+2. Complete Phase 4
 
 ---
 
