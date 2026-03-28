@@ -331,7 +331,68 @@ fn bench_simd_vs_scalar(c: &mut Criterion) {
     group.finish();
 }
 
-#[cfg(feature = "simd")]
+// ── Combined Phase 0 vs Phase 4 speedup benchmark ─────────────────────────
+
+#[cfg(feature = "gpu")]
+fn combined_speedup_phase0_vs_phase4(c: &mut Criterion) {
+    use turboquant::GpuBackend;
+
+    let gpu = match GpuBackend::new() {
+        Ok(g) => g,
+        Err(e) => {
+            eprintln!("Skipping combined speedup benchmark: {}", e);
+            return;
+        }
+    };
+
+    let dim = 128;
+    let bits = 3;
+    let seq_len = 128;
+
+    // Phase 0 baseline: ScalarBackend, sequential single-vector operations
+    let mut cache_baseline = KvCache::new(dim, bits, 42, 99).unwrap();
+    // Phase 4: GpuBackend with batch operations
+    let mut cache_gpu = KvCache::new_with_backend(dim, bits, 42, 99, gpu).unwrap();
+
+    for i in 0..seq_len {
+        let k: Vec<f32> = (0..dim)
+            .map(|j| ((i * dim + j) as f32 * 0.01).sin())
+            .collect();
+        let v: Vec<f32> = (0..dim)
+            .map(|j| ((i * dim + j) as f32 * 0.01).cos())
+            .collect();
+        cache_baseline.push(&k, &v).unwrap();
+        cache_gpu.push(&k, &v).unwrap();
+    }
+
+    let query: Vec<f32> = (0..dim).map(|i| (i as f32 * 0.05).sin()).collect();
+
+    let mut group = c.benchmark_group("combined_speedup_perf02");
+
+    group.bench_function("phase0_scalar_sequential", |b| {
+        b.iter(|| cache_baseline.attend(&query).unwrap())
+    });
+
+    group.bench_function("phase4_gpu_batch", |b| {
+        b.iter(|| cache_gpu.attend_gpu(&query).unwrap())
+    });
+
+    group.finish();
+}
+
+#[cfg(all(feature = "simd", feature = "gpu"))]
+criterion_group!(
+    benches,
+    bench_attention_e2e,
+    bench_inner_product_throughput,
+    bench_quantize_throughput,
+    bench_batch_of_1_regression,
+    bench_batch_64_throughput,
+    bench_simd_vs_scalar,
+    combined_speedup_phase0_vs_phase4
+);
+
+#[cfg(all(feature = "simd", not(feature = "gpu")))]
 criterion_group!(
     benches,
     bench_attention_e2e,
@@ -342,7 +403,18 @@ criterion_group!(
     bench_simd_vs_scalar
 );
 
-#[cfg(not(feature = "simd"))]
+#[cfg(all(not(feature = "simd"), feature = "gpu"))]
+criterion_group!(
+    benches,
+    bench_attention_e2e,
+    bench_inner_product_throughput,
+    bench_quantize_throughput,
+    bench_batch_of_1_regression,
+    bench_batch_64_throughput,
+    combined_speedup_phase0_vs_phase4
+);
+
+#[cfg(all(not(feature = "simd"), not(feature = "gpu")))]
 criterion_group!(
     benches,
     bench_attention_e2e,
