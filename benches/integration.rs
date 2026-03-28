@@ -140,6 +140,58 @@ fn bench_quantize_throughput(c: &mut Criterion) {
     group.finish();
 }
 
+// ── Batch-of-1 regression benchmarks ───────────────────────────────────────
+
+fn bench_batch_of_1_regression(c: &mut Criterion) {
+    let mut group = c.benchmark_group("batch_of_1_regression");
+    group.warm_up_time(Duration::from_secs(2));
+    group.measurement_time(Duration::from_secs(5));
+
+    let dim = 128;
+    let bits = 3;
+    let pq = PolarQuant::new(dim, bits, 42).unwrap();
+
+    // --- Quantize: single vs batch-of-1 ---
+    let vec_data = sine_vec(dim, 0.1);
+
+    group.bench_function("quantize_single", |b| {
+        b.iter(|| pq.quantize(black_box(&vec_data)).unwrap())
+    });
+
+    group.bench_function("quantize_batch_1", |b| {
+        let batch = vec![vec_data.clone()];
+        b.iter(|| pq.batch_quantize(black_box(&batch)).unwrap())
+    });
+
+    // --- Inner product: single vs batch-of-1 ---
+    let query = sine_vec(dim, 0.07);
+    let key = pq.quantize(&sine_vec(dim, 0.1)).unwrap();
+
+    group.bench_function("inner_product_single", |b| {
+        b.iter(|| pq.inner_product(black_box(&query), black_box(&key)).unwrap())
+    });
+
+    group.bench_function("inner_product_batch_1", |b| {
+        let keys = vec![key.clone()];
+        b.iter(|| pq.batch_inner_product(black_box(&query), black_box(&keys)).unwrap())
+    });
+
+    // --- Attend: single vs batch-of-1 ---
+    let mut cache = KvCache::new(dim, bits, 42, 99).unwrap();
+    fill_cache(&mut cache, 128, dim);
+
+    group.bench_function("attend_single", |b| {
+        b.iter(|| cache.attend(black_box(&query)).unwrap())
+    });
+
+    group.bench_function("attend_batch_1", |b| {
+        let queries = vec![query.clone()];
+        b.iter(|| cache.batch_attend(black_box(&queries)).unwrap())
+    });
+
+    group.finish();
+}
+
 // ── SIMD vs Scalar comparison benchmarks ───────────────────────────────────
 
 #[cfg(feature = "simd")]
@@ -210,6 +262,7 @@ criterion_group!(
     bench_attention_e2e,
     bench_inner_product_throughput,
     bench_quantize_throughput,
+    bench_batch_of_1_regression,
     bench_simd_vs_scalar
 );
 
@@ -218,7 +271,8 @@ criterion_group!(
     benches,
     bench_attention_e2e,
     bench_inner_product_throughput,
-    bench_quantize_throughput
+    bench_quantize_throughput,
+    bench_batch_of_1_regression
 );
 
 criterion_main!(benches);
