@@ -24,7 +24,7 @@ use crate::{
     rotation::Rotation,
 };
 use rayon::prelude::*;
-use std::{cell::RefCell, sync::Arc};
+use std::cell::RefCell;
 
 // ── Public data type ────────────────────────────────────────────────────────
 
