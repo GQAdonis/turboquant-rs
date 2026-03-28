@@ -174,6 +174,9 @@ impl<B: Backend> TurboQuant<B> {
 
     // ── Accessors ─────────────────────────────────────────────────────────
 
+    /// Access the MSE PolarQuant (Stage 1) for direct batch operations.
+    pub fn mse_polar(&self) -> &PolarQuant<B> { &self.mse }
+
     pub fn dim(&self)  -> usize { self.mse.dim()  }
     pub fn bits(&self) -> u8    { self.bits        }
     pub fn seed(&self) -> u64   { self.mse.rotation().seed }

@@ -26,6 +26,9 @@ use crate::{
 use rayon::prelude::*;
 use std::cell::RefCell;
 
+#[cfg(feature = "gpu")]
+use crate::backend::gpu::{GpuBackend, GPU_BATCH_THRESHOLD};
+
 // ── Public data type ────────────────────────────────────────────────────────
 
 /// A PolarQuant-compressed vector.
@@ -304,6 +307,146 @@ impl<B: Backend> PolarQuant<B> {
             Err(TurboQuantError::DimensionMismatch { expected, got })
         } else {
             Ok(())
+        }
+    }
+}
+
+// ── GPU-specific batch dispatch ─────────────────────────────────────────────
+
+#[cfg(feature = "gpu")]
+impl PolarQuant<GpuBackend> {
+    /// GPU batch FWHT rotation + CPU quantization for large batches.
+    fn batch_quantize_gpu(&self, vecs: &[Vec<f32>]) -> Result<Vec<QuantizedVector>> {
+        let dim = self.dim();
+        let batch_size = vecs.len();
+        let gpu = self.backend();
+
+        // 1. Compute norms on CPU (cheap, O(n*dim))
+        let norms: Vec<f32> = vecs.iter().map(|v| l2_norm(v)).collect();
+
+        // 2. Normalize and flatten into contiguous buffer
+        let mut flat: Vec<f32> = Vec::with_capacity(batch_size * dim);
+        for (v, &norm) in vecs.iter().zip(&norms) {
+            if norm > f32::EPSILON {
+                flat.extend(v.iter().map(|&x| x / norm));
+            } else {
+                flat.extend(std::iter::repeat(0.0f32).take(dim));
+            }
+        }
+
+        // 3. Apply random signs (D matrix) on CPU
+        let signs = self.rotation().signs();
+        for b in 0..batch_size {
+            let start = b * dim;
+            for i in 0..dim {
+                flat[start + i] *= signs[i] as f32;
+            }
+        }
+
+        // 4. Copy to GPU and run batch FWHT kernel
+        let mut d_data = gpu.device().htod_sync_copy(&flat)
+            .map_err(|e| TurboQuantError::GpuKernelFailed { reason: format!("htod copy: {}", e) })?;
+        gpu.launch_fwht_batch(&mut d_data, dim, batch_size)?;
+
+        // 5. Copy back
+        let rotated = gpu.device().dtoh_sync_copy(&d_data)
+            .map_err(|e| TurboQuantError::GpuKernelFailed { reason: format!("dtoh copy: {}", e) })?;
+
+        // 6. Quantize each vector on CPU (codebook lookup + bitpack)
+        let mut results = Vec::with_capacity(batch_size);
+        for b in 0..batch_size {
+            let start = b * dim;
+            let slice = &rotated[start..start + dim];
+            let indices = self.codebook().quantize_slice(slice);
+            let packed = bitpack::pack(&indices, self.codebook().bits)?;
+            results.push(QuantizedVector {
+                norm: norms[b],
+                packed,
+                dim,
+                bits: self.codebook().bits,
+            });
+        }
+
+        Ok(results)
+    }
+
+    /// GPU batch dequantize + dot product for large key sets.
+    fn batch_inner_product_gpu(
+        &self,
+        query: &[f32],
+        keys: &[QuantizedVector],
+    ) -> Result<Vec<f32>> {
+        let dim = self.dim();
+        let batch_size = keys.len();
+        let gpu = self.backend();
+
+        // 1. Rotate query on CPU (single vector, fast)
+        let mut q_rotated = query.to_vec();
+        self.rotation().apply(&mut q_rotated);
+
+        // 2. Prepare key data: flatten packed indices and norms
+        let packed_bytes = crate::bitpack::packed_byte_size(dim, self.bits());
+        let mut flat_packed: Vec<u8> = Vec::with_capacity(batch_size * packed_bytes);
+        let mut key_norms: Vec<f32> = Vec::with_capacity(batch_size);
+        for k in keys {
+            flat_packed.extend_from_slice(&k.packed);
+            key_norms.push(k.norm);
+        }
+
+        // 3. Upload to GPU
+        let d_query = gpu.device().htod_sync_copy(&q_rotated)
+            .map_err(|e| TurboQuantError::GpuKernelFailed { reason: format!("htod query: {}", e) })?;
+        let d_packed = gpu.device().htod_sync_copy(&flat_packed)
+            .map_err(|e| TurboQuantError::GpuKernelFailed { reason: format!("htod packed: {}", e) })?;
+        let d_norms = gpu.device().htod_sync_copy(&key_norms)
+            .map_err(|e| TurboQuantError::GpuKernelFailed { reason: format!("htod norms: {}", e) })?;
+        let d_centroids = gpu.device().htod_sync_copy(self.codebook().centroids())
+            .map_err(|e| TurboQuantError::GpuKernelFailed { reason: format!("htod centroids: {}", e) })?;
+
+        // 4. Dequantize keys on GPU
+        let mut d_keys = gpu.get_f32_buffer(batch_size * dim)?;
+        gpu.launch_batch_dequantize(
+            &d_packed, &d_centroids, &mut d_keys,
+            dim, self.bits(), packed_bytes, batch_size,
+        )?;
+
+        // 5. Compute batch dot products on GPU
+        let mut d_results = gpu.get_f32_buffer(batch_size)?;
+        gpu.launch_batch_dot_product(
+            &d_query, &d_keys, &d_norms, &mut d_results,
+            dim, batch_size,
+        )?;
+
+        // 6. Copy results back
+        let results = gpu.device().dtoh_sync_copy(&d_results)
+            .map_err(|e| TurboQuantError::GpuKernelFailed { reason: format!("dtoh results: {}", e) })?;
+
+        // 7. Return buffers to pool
+        gpu.return_f32_buffer(batch_size * dim, d_keys);
+        gpu.return_f32_buffer(batch_size, d_results);
+
+        Ok(results)
+    }
+
+    /// GPU-aware batch quantize: routes to GPU for large batches, CPU for small.
+    pub fn batch_quantize_dispatch(&self, vecs: &[Vec<f32>]) -> Result<Vec<QuantizedVector>> {
+        if vecs.len() >= GPU_BATCH_THRESHOLD {
+            self.batch_quantize_gpu(vecs)
+        } else {
+            self.batch_quantize(vecs)
+        }
+    }
+
+    /// GPU-aware batch inner product: routes to GPU for large batches, CPU for small.
+    pub fn batch_inner_product_dispatch(
+        &self,
+        query: &[f32],
+        keys: &[QuantizedVector],
+    ) -> Result<Vec<f32>> {
+        if keys.len() >= GPU_BATCH_THRESHOLD {
+            self.batch_inner_product_gpu(query, keys)
+        } else {
+            self.batch_inner_product(query, keys)
         }
     }
 }

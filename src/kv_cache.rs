@@ -21,6 +21,9 @@ use crate::{
 };
 use rayon::prelude::*;
 
+#[cfg(feature = "gpu")]
+use crate::backend::gpu::{GpuBackend, GPU_BATCH_THRESHOLD};
+
 // ── KV entry ────────────────────────────────────────────────────────────────
 
 #[derive(Clone)]
@@ -301,6 +304,43 @@ impl<B: Backend> KvCache<B> {
         let c = self.compressed_bytes();
         if c == 0 { return 1.0; }
         self.uncompressed_bytes() as f32 / c as f32
+    }
+}
+
+// ── GPU-specific batch dispatch ─────────────────────────────────────────────
+
+#[cfg(feature = "gpu")]
+impl KvCache<GpuBackend> {
+    /// GPU-accelerated single-query attend.
+    /// Uses batch inner product on GPU when cache has >= GPU_BATCH_THRESHOLD entries.
+    pub fn attend_gpu(&self, query: &[f32]) -> Result<Vec<f32>> {
+        if self.entries.len() < GPU_BATCH_THRESHOLD {
+            return self.attend(query);
+        }
+
+        // Collect all keys as QuantizedVectors
+        let keys: Vec<crate::polar_quant::QuantizedVector> = self.entries.iter()
+            .map(|e| e.key.clone())
+            .collect();
+
+        // GPU batch inner product for all logits at once
+        let logits = self.key_tq.mse_polar().batch_inner_product_dispatch(query, &keys)?;
+        let out = AttentionOutput { logits };
+
+        // Decompress values (still CPU for now)
+        let values = self.decompress_values()?;
+        Ok(out.weighted_sum(&values))
+    }
+
+    /// GPU-aware batch attend: routes large query batches through GPU-accelerated
+    /// inner product path, small batches through CPU.
+    pub fn batch_attend_dispatch(&self, queries: &[Vec<f32>]) -> Result<Vec<Vec<f32>>> {
+        if self.entries.len() >= GPU_BATCH_THRESHOLD {
+            // Use GPU-accelerated attend for each query
+            queries.iter().map(|q| self.attend_gpu(q)).collect()
+        } else {
+            self.batch_attend(queries)
+        }
     }
 }
 
