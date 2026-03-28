@@ -23,7 +23,9 @@ use crate::error::Result;
 ///
 /// All methods use concrete types (no generics in methods) to maintain
 /// object safety for potential future runtime backend selection.
-pub trait Backend: Clone + std::fmt::Debug {
+///
+/// The `Send + Sync` bounds enable parallel batch processing via rayon.
+pub trait Backend: Clone + std::fmt::Debug + Send + Sync {
     /// Apply normalized Fast Walsh-Hadamard Transform in-place.
     ///
     /// Input `data` must have power-of-two length.

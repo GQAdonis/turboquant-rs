@@ -23,7 +23,8 @@ use crate::{
     error::{Result, TurboQuantError},
     rotation::Rotation,
 };
-use std::cell::RefCell;
+use rayon::prelude::*;
+use std::{cell::RefCell, sync::Arc};
 
 // ── Public data type ────────────────────────────────────────────────────────
 
@@ -177,6 +178,113 @@ impl<B: Backend> PolarQuant<B> {
         // Scale by key norm (query norm does not factor in here;
         // the caller applies it via the standard softmax attention formula).
         Ok(dot * key.norm)
+    }
+
+    // ── Batch operations ──────────────────────────────────────────────────
+
+    /// Quantize multiple vectors in parallel.
+    ///
+    /// Returns `Vec<QuantizedVector>` with same length as input.
+    /// Fails fast on first error (dimension mismatch, invalid input).
+    ///
+    /// # Performance
+    /// - Batch-of-1: delegates to `quantize()` directly (zero overhead)
+    /// - Batch >= 2: parallel processing via rayon work-stealing
+    #[must_use = "quantized vectors should be stored"]
+    pub fn batch_quantize(&self, vecs: &[Vec<f32>]) -> Result<Vec<QuantizedVector>> {
+        if vecs.is_empty() {
+            return Ok(vec![]);
+        }
+        if vecs.len() == 1 {
+            return Ok(vec![self.quantize(&vecs[0])?]);
+        }
+        // Validate all dimensions up front before spawning threads
+        for v in vecs {
+            self.check_dim(v.len())?;
+        }
+
+        // Extract values needed for reconstruction inside the thread-local init
+        let dim = self.dim();
+        let bits = self.bits();
+        let seed = self.rotation.seed;
+        let backend = self.backend.clone();
+
+        vecs.par_iter()
+            .map_init(
+                move || Self::new_with_backend(dim, bits, seed, backend.clone()).unwrap(),
+                |pq, v| pq.quantize(v)
+            )
+            .collect()
+    }
+
+    /// Zero-copy variant accepting borrowed slices.
+    #[must_use = "quantized vectors should be stored"]
+    pub fn batch_quantize_slices(&self, vecs: &[&[f32]]) -> Result<Vec<QuantizedVector>> {
+        if vecs.is_empty() {
+            return Ok(vec![]);
+        }
+        if vecs.len() == 1 {
+            return Ok(vec![self.quantize(vecs[0])?]);
+        }
+        for v in vecs {
+            self.check_dim(v.len())?;
+        }
+
+        let dim = self.dim();
+        let bits = self.bits();
+        let seed = self.rotation.seed;
+        let backend = self.backend.clone();
+
+        vecs.par_iter()
+            .map_init(
+                move || Self::new_with_backend(dim, bits, seed, backend.clone()).unwrap(),
+                |pq, v| pq.quantize(v)
+            )
+            .collect()
+    }
+
+    /// Compute inner products of one query against multiple quantized keys in parallel.
+    ///
+    /// This is the primary hot path for batch attention logit computation.
+    /// The query is shared read-only; each worker gets a cloned PolarQuant
+    /// with independent scratch buffers.
+    ///
+    /// # Performance
+    /// - Batch-of-1: delegates to `inner_product()` directly (zero overhead)
+    /// - Batch >= 2: parallel processing via rayon work-stealing
+    #[must_use = "inner product results should be used"]
+    pub fn batch_inner_product(
+        &self,
+        query: &[f32],
+        keys: &[QuantizedVector],
+    ) -> Result<Vec<f32>> {
+        self.check_dim(query.len())?;
+        if keys.is_empty() {
+            return Ok(vec![]);
+        }
+        if keys.len() == 1 {
+            return Ok(vec![self.inner_product(query, &keys[0])?]);
+        }
+        for k in keys {
+            self.check_dim(k.dim)?;
+        }
+
+        let dim = self.dim();
+        let bits = self.bits();
+        let seed = self.rotation.seed;
+        let backend = self.backend.clone();
+        let query_vec: Vec<f32> = query.to_vec();
+
+        keys.par_iter()
+            .map_init(
+                move || {
+                    let pq = Self::new_with_backend(dim, bits, seed, backend.clone()).unwrap();
+                    let q = query_vec.clone();
+                    (pq, q)
+                },
+                |(pq, q), k| pq.inner_product(q, k)
+            )
+            .collect()
     }
 
     // ── Accessors ─────────────────────────────────────────────────────────

@@ -30,6 +30,7 @@ pub struct Rotation<B: Backend = ScalarBackend> {
     /// ±1 signs for the diagonal matrix D, stored as i8 for compact layout.
     signs: Vec<i8>,
     pub dim: usize,
+    pub seed: u64,
     backend: B,
 }
 
@@ -46,7 +47,7 @@ impl<B: Backend> Rotation<B> {
         if !dim.is_power_of_two() {
             return Err(TurboQuantError::DimensionNotPowerOfTwo(dim));
         }
-        Ok(Self { signs: gen_signs(dim, seed), dim, backend })
+        Ok(Self { signs: gen_signs(dim, seed), dim, seed, backend })
     }
 
     /// Apply R: x → H̃(D x)   (in-place).
