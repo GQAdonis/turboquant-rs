@@ -8,11 +8,16 @@ use crate::backend::ScalarBackend;
 use crate::error::{Result, TurboQuantError};
 use cudarc::driver::{CudaDevice, CudaSlice, LaunchAsync, LaunchConfig};
 use cudarc::nvrtc::Ptx;
+use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
 
 // PTX modules embedded from build output
 const FWHT_PTX: &str = include_str!(concat!(env!("OUT_DIR"), "/fwht.ptx"));
 const ATTENTION_PTX: &str = include_str!(concat!(env!("OUT_DIR"), "/attention.ptx"));
+
+/// Minimum batch size to route to GPU kernels.
+/// Below this, CPU (scalar/SIMD + rayon) is faster due to GPU transfer overhead.
+pub const GPU_BATCH_THRESHOLD: usize = 32;
 
 /// CUDA GPU compute backend.
 ///
@@ -24,6 +29,10 @@ pub struct GpuBackend {
     device: Arc<CudaDevice>,
     scalar: ScalarBackend,
     modules_loaded: Arc<Mutex<bool>>,
+    /// Pool of reusable device buffers, keyed by size in elements.
+    /// Each size maps to a stack of available buffers.
+    f32_pool: Arc<Mutex<HashMap<usize, Vec<CudaSlice<f32>>>>>,
+    u8_pool: Arc<Mutex<HashMap<usize, Vec<CudaSlice<u8>>>>>,
 }
 
 impl GpuBackend {
@@ -54,6 +63,8 @@ impl GpuBackend {
             device: Arc::new(device),
             scalar: ScalarBackend,
             modules_loaded: Arc::new(Mutex::new(false)),
+            f32_pool: Arc::new(Mutex::new(HashMap::new())),
+            u8_pool: Arc::new(Mutex::new(HashMap::new())),
         })
     }
 
@@ -85,6 +96,52 @@ impl GpuBackend {
             *loaded = true;
         }
         Ok(())
+    }
+
+    /// Get or allocate a device f32 buffer of `count` elements.
+    pub fn get_f32_buffer(&self, count: usize) -> Result<CudaSlice<f32>> {
+        let mut pool = self.f32_pool.lock().unwrap();
+        if let Some(stack) = pool.get_mut(&count) {
+            if let Some(buf) = stack.pop() {
+                return Ok(buf);
+            }
+        }
+        self.device.alloc_zeros::<f32>(count).map_err(|e| TurboQuantError::GpuAllocFailed {
+            size: count,
+            reason: e.to_string(),
+        })
+    }
+
+    /// Return a device f32 buffer to the pool for reuse.
+    pub fn return_f32_buffer(&self, count: usize, buffer: CudaSlice<f32>) {
+        let mut pool = self.f32_pool.lock().unwrap();
+        pool.entry(count).or_default().push(buffer);
+    }
+
+    /// Get or allocate a device u8 buffer of `count` elements.
+    pub fn get_u8_buffer(&self, count: usize) -> Result<CudaSlice<u8>> {
+        let mut pool = self.u8_pool.lock().unwrap();
+        if let Some(stack) = pool.get_mut(&count) {
+            if let Some(buf) = stack.pop() {
+                return Ok(buf);
+            }
+        }
+        self.device.alloc_zeros::<u8>(count).map_err(|e| TurboQuantError::GpuAllocFailed {
+            size: count,
+            reason: e.to_string(),
+        })
+    }
+
+    /// Return a device u8 buffer to the pool for reuse.
+    pub fn return_u8_buffer(&self, count: usize, buffer: CudaSlice<u8>) {
+        let mut pool = self.u8_pool.lock().unwrap();
+        pool.entry(count).or_default().push(buffer);
+    }
+
+    /// Clear all pooled buffers (frees GPU memory).
+    pub fn clear_pools(&self) {
+        self.f32_pool.lock().unwrap().clear();
+        self.u8_pool.lock().unwrap().clear();
     }
 
     /// Launch batch FWHT kernel on GPU.
@@ -326,5 +383,26 @@ mod tests {
                 "FWHT mismatch at index {i}: CPU={cpu_val}, GPU={gpu_val}"
             );
         }
+    }
+
+    #[test]
+    fn gpu_memory_pool_reuse() {
+        let gpu = match GpuBackend::new() {
+            Ok(g) => g,
+            Err(_) => return, // Skip if no GPU
+        };
+
+        // Allocate and return a buffer
+        let buf = gpu.get_f32_buffer(128).expect("alloc");
+        gpu.return_f32_buffer(128, buf);
+
+        // Second allocation should reuse
+        let buf2 = gpu.get_f32_buffer(128).expect("reuse");
+        // Different size should allocate fresh
+        let buf3 = gpu.get_f32_buffer(256).expect("alloc new size");
+
+        gpu.return_f32_buffer(128, buf2);
+        gpu.return_f32_buffer(256, buf3);
+        gpu.clear_pools();
     }
 }
