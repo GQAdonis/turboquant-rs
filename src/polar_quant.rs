@@ -291,6 +291,7 @@ impl<B: Backend> PolarQuant<B> {
 
     pub fn codebook(&self)  -> &Codebook { &self.codebook  }
     pub fn rotation(&self)  -> &Rotation<B> { &self.rotation  }
+    pub fn backend(&self)   -> &B        { &self.backend   }
     pub fn dim(&self)       -> usize      { self.rotation.dim }
     pub fn bits(&self)      -> u8         { self.codebook.bits }
 

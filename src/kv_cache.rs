@@ -19,9 +19,11 @@ use crate::{
     error::Result,
     turboquant::{TurboQuant, TurboVectorMse},
 };
+use rayon::prelude::*;
 
 // ── KV entry ────────────────────────────────────────────────────────────────
 
+#[derive(Clone)]
 struct Entry {
     key: TurboVectorMse,
     val: TurboVectorMse,
@@ -75,6 +77,17 @@ pub struct KvCache<B: Backend = ScalarBackend> {
     val_tq: TurboQuant<B>,
     entries: Vec<Entry>,
     head_dim: usize,
+}
+
+impl<B: Backend> Clone for KvCache<B> {
+    fn clone(&self) -> Self {
+        Self {
+            key_tq: self.key_tq.clone(),
+            val_tq: self.val_tq.clone(),
+            entries: self.entries.clone(),
+            head_dim: self.head_dim,
+        }
+    }
 }
 
 impl KvCache<ScalarBackend> {
@@ -149,6 +162,111 @@ impl<B: Backend> KvCache<B> {
         let out    = self.attention_logits(query)?;
         let values = self.decompress_values()?;
         Ok(out.weighted_sum(&values))
+    }
+
+    /// Compute attention for multiple queries in parallel.
+    ///
+    /// Each query independently computes logits -> softmax -> weighted sum
+    /// against all cached entries. Parallelism is across queries, not within
+    /// a single attention computation.
+    ///
+    /// # Performance
+    /// - Batch-of-1: delegates to `attend()` directly (zero overhead)
+    /// - Batch >= 2: parallel processing via rayon work-stealing
+    ///
+    /// # Implementation Note
+    /// Each worker thread reconstructs TurboQuant instances (to avoid Sync
+    /// issues with RefCell) and clones the entries Vec. For very large caches,
+    /// this cloning cost can be optimized in future phases using shared
+    /// references if needed for GPU dispatch.
+    #[must_use = "attention outputs should be used"]
+    pub fn batch_attend(&self, queries: &[Vec<f32>]) -> Result<Vec<Vec<f32>>> {
+        if queries.is_empty() {
+            return Ok(vec![]);
+        }
+        if queries.len() == 1 {
+            return Ok(vec![self.attend(&queries[0])?]);
+        }
+        // Validate dimensions up front
+        for q in queries {
+            if q.len() != self.head_dim {
+                return Err(crate::error::TurboQuantError::DimensionMismatch {
+                    expected: self.head_dim,
+                    got: q.len(),
+                });
+            }
+        }
+
+        // Extract reconstruction parameters (all are Sync/Send)
+        let head_dim = self.head_dim;
+        let bits = self.key_tq.bits();
+        let key_seed = self.key_tq.seed();
+        let val_seed = self.val_tq.seed();
+        let backend = self.key_tq.backend().clone();
+        let entries_clone = self.entries.clone();
+
+        queries.par_iter()
+            .map_init(
+                move || {
+                    // Each thread reconstructs KvCache with fresh RefCells
+                    let mut cache = KvCache::new_with_backend(
+                        head_dim,
+                        bits,
+                        key_seed,
+                        val_seed,
+                        backend.clone()
+                    ).unwrap();
+                    cache.entries = entries_clone.clone();
+                    cache
+                },
+                |cache, q| cache.attend(q)
+            )
+            .collect()
+    }
+
+    /// Zero-copy variant accepting borrowed slices.
+    #[must_use = "attention outputs should be used"]
+    pub fn batch_attend_slices(&self, queries: &[&[f32]]) -> Result<Vec<Vec<f32>>> {
+        if queries.is_empty() {
+            return Ok(vec![]);
+        }
+        if queries.len() == 1 {
+            return Ok(vec![self.attend(queries[0])?]);
+        }
+        for q in queries {
+            if q.len() != self.head_dim {
+                return Err(crate::error::TurboQuantError::DimensionMismatch {
+                    expected: self.head_dim,
+                    got: q.len(),
+                });
+            }
+        }
+
+        // Extract reconstruction parameters (all are Sync/Send)
+        let head_dim = self.head_dim;
+        let bits = self.key_tq.bits();
+        let key_seed = self.key_tq.seed();
+        let val_seed = self.val_tq.seed();
+        let backend = self.key_tq.backend().clone();
+        let entries_clone = self.entries.clone();
+
+        queries.par_iter()
+            .map_init(
+                move || {
+                    // Each thread reconstructs KvCache with fresh RefCells
+                    let mut cache = KvCache::new_with_backend(
+                        head_dim,
+                        bits,
+                        key_seed,
+                        val_seed,
+                        backend.clone()
+                    ).unwrap();
+                    cache.entries = entries_clone.clone();
+                    cache
+                },
+                |cache, q| cache.attend(q)
+            )
+            .collect()
     }
 
     // ── Metrics ──────────────────────────────────────────────────────────
@@ -256,5 +374,131 @@ mod tests {
         assert!(logits.logits.is_empty());
         let weighted = logits.weighted_sum(&[]);
         assert!(weighted.is_empty());
+    }
+}
+
+#[cfg(test)]
+mod batch_tests {
+    use super::*;
+
+    fn make_cache(bits: u8) -> KvCache {
+        KvCache::new(128, bits, 42, 99).unwrap()
+    }
+
+    fn fill(cache: &mut KvCache, n: usize) {
+        for i in 0..n {
+            let k: Vec<f32> = (0..128).map(|j| ((i * 128 + j) as f32 * 0.01).sin()).collect();
+            let v: Vec<f32> = (0..128).map(|j| ((i * 128 + j) as f32 * 0.01).cos()).collect();
+            cache.push(&k, &v).unwrap();
+        }
+    }
+
+    #[test]
+    fn batch_attend_dimensions() {
+        let mut cache = make_cache(3);
+        fill(&mut cache, 16);
+
+        let queries: Vec<Vec<f32>> = (0..4)
+            .map(|i| (0..128).map(|j| ((i * 128 + j) as f32 * 0.05).sin()).collect())
+            .collect();
+
+        let result = cache.batch_attend(&queries).unwrap();
+        assert_eq!(result.len(), 4, "should return 4 outputs for 4 queries");
+        for output in &result {
+            assert_eq!(output.len(), 128, "each output should be head_dim=128");
+        }
+    }
+
+    #[test]
+    fn batch_attend_empty() {
+        let mut cache = make_cache(3);
+        fill(&mut cache, 8);
+
+        let queries: Vec<Vec<f32>> = vec![];
+        let result = cache.batch_attend(&queries).unwrap();
+        assert!(result.is_empty(), "empty input should return empty result");
+    }
+
+    #[test]
+    fn batch_attend_single_matches_attend() {
+        let mut cache = make_cache(3);
+        fill(&mut cache, 10);
+
+        let query: Vec<f32> = (0..128).map(|i| (i as f32 * 0.05).sin()).collect();
+
+        // Single attend
+        let single = cache.attend(&query).unwrap();
+
+        // Batch-of-1
+        let batch = cache.batch_attend(&[query]).unwrap();
+
+        assert_eq!(batch.len(), 1);
+        assert_eq!(single.len(), batch[0].len());
+        for (s, b) in single.iter().zip(&batch[0]) {
+            assert!((s - b).abs() < 1e-5, "batch-of-1 should match single attend");
+        }
+    }
+
+    #[test]
+    fn batch_attend_slices_equivalence() {
+        let mut cache = make_cache(3);
+        fill(&mut cache, 12);
+
+        let queries: Vec<Vec<f32>> = (0..3)
+            .map(|i| (0..128).map(|j| ((i * 128 + j) as f32 * 0.04).sin()).collect())
+            .collect();
+
+        let result_owned = cache.batch_attend(&queries).unwrap();
+
+        let slices: Vec<&[f32]> = queries.iter().map(|v| v.as_slice()).collect();
+        let result_slices = cache.batch_attend_slices(&slices).unwrap();
+
+        assert_eq!(result_owned.len(), result_slices.len());
+        for (owned, sliced) in result_owned.iter().zip(&result_slices) {
+            assert_eq!(owned.len(), sliced.len());
+            for (o, s) in owned.iter().zip(sliced) {
+                assert!((o - s).abs() < 1e-5, "slices variant should match owned");
+            }
+        }
+    }
+
+    #[test]
+    fn batch_attend_sequential_equivalence() {
+        let mut cache = make_cache(3);
+        fill(&mut cache, 8);
+
+        let queries: Vec<Vec<f32>> = (0..5)
+            .map(|i| (0..128).map(|j| ((i * 128 + j) as f32 * 0.03).sin()).collect())
+            .collect();
+
+        // Sequential loop
+        let sequential: Vec<Vec<f32>> = queries.iter()
+            .map(|q| cache.attend(q).unwrap())
+            .collect();
+
+        // Batch
+        let batch = cache.batch_attend(&queries).unwrap();
+
+        assert_eq!(sequential.len(), batch.len());
+        for (seq, bat) in sequential.iter().zip(&batch) {
+            assert_eq!(seq.len(), bat.len());
+            for (s, b) in seq.iter().zip(bat) {
+                assert!((s - b).abs() < 1e-5, "batch should match sequential within epsilon");
+            }
+        }
+    }
+
+    #[test]
+    fn batch_attend_dimension_mismatch() {
+        let mut cache = make_cache(3);
+        fill(&mut cache, 5);
+
+        let queries = vec![
+            (0..128).map(|i| (i as f32 * 0.02).sin()).collect(),
+            vec![0.0f32; 64], // Wrong dimension!
+        ];
+
+        let result = cache.batch_attend(&queries);
+        assert!(result.is_err(), "should fail on dimension mismatch");
     }
 }

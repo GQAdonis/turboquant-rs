@@ -63,6 +63,17 @@ pub struct TurboQuant<B: Backend = ScalarBackend> {
     bits: u8,
 }
 
+impl<B: Backend> Clone for TurboQuant<B> {
+    fn clone(&self) -> Self {
+        Self {
+            mse: self.mse.clone(),
+            prod_polar: self.prod_polar.clone(),
+            qjl: self.qjl.clone(),
+            bits: self.bits,
+        }
+    }
+}
+
 impl TurboQuant<ScalarBackend> {
     /// Create a [`TurboQuant`] instance with the default scalar backend.
     ///
@@ -165,6 +176,8 @@ impl<B: Backend> TurboQuant<B> {
 
     pub fn dim(&self)  -> usize { self.mse.dim()  }
     pub fn bits(&self) -> u8    { self.bits        }
+    pub fn seed(&self) -> u64   { self.mse.rotation().seed }
+    pub fn backend(&self) -> &B { self.mse.backend() }
 }
 
 // ── Tests ───────────────────────────────────────────────────────────────────
