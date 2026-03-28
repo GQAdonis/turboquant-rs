@@ -61,8 +61,8 @@ Requirements for production-ready optimization milestone. Each maps to roadmap p
 - [x] **PERF-01**: Achieve <2% inner product error (maintain accuracy)
 - [ ] **PERF-02**: Demonstrate 3-8x combined speedup on attention hot path
 - [x] **API-01**: Maintain backward compatibility (existing API unchanged)
-- [ ] **DOC-01**: Document feature flags and backend selection
-- [ ] **DOC-02**: Add performance guide with benchmark results
+- [x] **DOC-01**: Document feature flags and backend selection
+- [x] **DOC-02**: Add performance guide with benchmark results
 
 ## v2 Requirements
 
@@ -147,8 +147,8 @@ Which phases cover which requirements. Updated during roadmap creation.
 | PERF-01 | All Phases | Complete |
 | PERF-02 | Phase 4 | Pending |
 | API-01 | All Phases | Complete |
-| DOC-01 | Phase 4 | Pending |
-| DOC-02 | Phase 4 | Pending |
+| DOC-01 | Phase 4 | Complete |
+| DOC-02 | Phase 4 | Complete |
 
 **Coverage:**
 - v1 requirements: 45 total

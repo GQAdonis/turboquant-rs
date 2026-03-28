@@ -3,14 +3,14 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
 status: executing
-stopped_at: Completed 04-03-PLAN.md
-last_updated: "2026-03-28T13:13:12Z"
+stopped_at: Completed 04-05-PLAN.md
+last_updated: "2026-03-28T13:21:16.074Z"
 progress:
   total_phases: 4
   completed_phases: 3
   total_plans: 15
-  completed_plans: 13
-  percent: 86
+  completed_plans: 14
+  percent: 93
 ---
 
 # Project State: TurboQuant Rust
@@ -31,14 +31,14 @@ progress:
 ## Current Position
 
 **Phase:** 04-gpu-backend
-**Plan:** 04-03 (completed)
+**Plan:** 04-05 (completed)
 **Status:** Ready to execute
 
 **Progress:**
-[████████░░] 86%
-Phase 4: [███████████████░░░░░] 75% (3/4 plans complete)
+[█████████░] 93%
+Phase 4: [████████████████░░░░] 80% (4/5 plans complete)
 
-**Next Action:** Execute 04-04
+**Next Action:** Phase 4 complete, ready for final phase completion or next phase
 
 ---
 
@@ -129,6 +129,10 @@ Phase 4: [███████████████░░░░░] 75% (3/4
 - [Phase 04-03]: Per-size GPU buffer pooling (HashMap<usize, Vec<CudaSlice<T>>>) amortizes cudaMalloc overhead
 - [Phase 04-03]: GPU_BATCH_THRESHOLD=32 routes large batches to GPU, small to CPU
 - [Phase 04-03]: Dispatch at API boundary via *_dispatch methods on PolarQuant<GpuBackend> and KvCache<GpuBackend>
+| Phase 04-gpu-backend P05 | 148 | 2 tasks | 2 files |
+- [Phase 04-gpu-backend]: Document all three backends (scalar, simd, gpu) with concrete build commands for user clarity
+- [Phase 04-gpu-backend]: Include GPU troubleshooting section with CUDA installation steps for actionable error resolution
+- [Phase 04-gpu-backend]: Document GPU_BATCH_THRESHOLD=32 to help users understand GPU benefit vs overhead trade-off
 
 ### Todos
 
@@ -197,8 +201,8 @@ Phase 4: [███████████████░░░░░] 75% (3/4
 ## Session Continuity
 
 **Session started:** 2026-03-27
-**Last session:** 2026-03-28T13:13:12Z
-**Stopped at:** Completed 04-03-PLAN.md
+**Last session:** 2026-03-28T13:21:16.072Z
+**Stopped at:** Completed 04-05-PLAN.md
 **Mode:** yolo (autonomous execution)
 **Granularity:** standard (5-8 phases)
 
