@@ -1,0 +1,16 @@
+{
+  "permissions": {
+    "allow": [
+      "mcp__tavily-mcp__tavily_search",
+      "Bash(cargo test:*)",
+      "Bash(git init:*)",
+      "Skill(rust-best-practices)",
+      "Bash(node:*)",
+      "WebFetch(domain:docs.rs)",
+      "WebFetch(domain:crates.io)",
+      "WebFetch(domain:github.com)",
+      "Bash(rustc:*)",
+      "Skill(gsd:plan-phase)"
+    ]
+  }
+}

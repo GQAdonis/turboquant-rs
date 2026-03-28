@@ -1,0 +1,72 @@
+# Rust build artifacts
+/target/
+**/*.rs.bk
+*.pdb
+
+# Cargo.lock (ignored for library crates, keep for binary crates)
+# For libraries, contributors should use their own dependency resolution
+# For binaries, commit this file to ensure reproducible builds
+# This is a library crate, so we ignore it:
+Cargo.lock
+
+# Benchmark outputs
+/criterion/
+*.criterion/
+/benches/*.html
+
+# Documentation build
+/doc/
+/target/doc/
+
+# IDE and editor files
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.DS_Store
+*.iml
+
+# macOS
+.DS_Store
+.AppleDouble
+.LSOverride
+
+# Claude Code specific
+.claude/sessions/
+.claude/logs/
+.claude/tmp/
+
+# Profiling and debugging
+*.profdata
+*.profraw
+perf.data*
+flamegraph.svg
+massif.out.*
+cachegrind.out.*
+
+# Test artifacts
+*.test
+/tests/tmp/
+/tests/fixtures/output/
+
+# Coverage reports
+/coverage/
+*.profdata
+tarpaulin-report.html
+cobertura.xml
+lcov.info
+
+# Local development
+.env
+.env.local
+.env.*.local
+
+# Temporary files
+*.tmp
+*.temp
+.*.swp
+
+# OS specific
+Thumbs.db
+Desktop.ini
