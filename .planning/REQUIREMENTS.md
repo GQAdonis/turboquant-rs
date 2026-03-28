@@ -44,8 +44,8 @@ Requirements for production-ready optimization milestone. Each maps to roadmap p
 
 - [x] **GPU-01**: Integrate cudarc for CUDA device management
 - [x] **GPU-02**: Implement GpuBackend with CUDA stream management
-- [ ] **GPU-03**: Write CUDA kernel for FWHT butterfly operations
-- [ ] **GPU-04**: Write CUDA kernel for batch attention logits
+- [x] **GPU-03**: Write CUDA kernel for FWHT butterfly operations
+- [x] **GPU-04**: Write CUDA kernel for batch attention logits
 - [ ] **GPU-05**: Implement GPU memory pooling for batch buffers
 - [ ] **GPU-06**: Add batch size threshold for CPU vs GPU dispatch (≥32)
 - [x] **GPU-07**: Add feature flag `gpu` for optional CUDA support
@@ -133,8 +133,8 @@ Which phases cover which requirements. Updated during roadmap creation.
 | BATCH-07 | Phase 3 | Complete |
 | GPU-01 | Phase 4 | Complete |
 | GPU-02 | Phase 4 | Complete |
-| GPU-03 | Phase 4 | Pending |
-| GPU-04 | Phase 4 | Pending |
+| GPU-03 | Phase 4 | Complete |
+| GPU-04 | Phase 4 | Complete |
 | GPU-05 | Phase 4 | Pending |
 | GPU-06 | Phase 4 | Pending |
 | GPU-07 | Phase 4 | Complete |
