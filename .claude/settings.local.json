@@ -10,7 +10,10 @@
       "WebFetch(domain:crates.io)",
       "WebFetch(domain:github.com)",
       "Bash(rustc:*)",
-      "Skill(gsd:plan-phase)"
+      "Skill(gsd:plan-phase)",
+      "Bash(git branch:*)",
+      "Bash(git remote:*)",
+      "Bash(git push:*)"
     ]
   }
 }

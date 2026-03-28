@@ -70,13 +70,13 @@ Add to your `Cargo.toml`:
 
 ```toml
 [dependencies]
-turboquant = { git = "https://github.com/your-org/turboquant-rs" }
+turboquant = { git = "https://github.com/gqadonis/turboquant-rs" }
 ```
 
 Or for local development:
 
 ```bash
-git clone https://github.com/your-org/turboquant-rs
+git clone https://github.com/gqadonis/turboquant-rs
 cd turboquant-rs
 cargo build --release
 ```
