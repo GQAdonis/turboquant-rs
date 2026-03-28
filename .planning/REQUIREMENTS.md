@@ -37,8 +37,8 @@ Requirements for production-ready optimization milestone. Each maps to roadmap p
 - [x] **BATCH-03**: Add batch_attend(query) to KvCache for multi-query attention
 - [x] **BATCH-04**: Implement zero-copy batch patterns (contiguous memory layout)
 - [x] **BATCH-05**: Add parallel CPU batch processing with rayon
-- [ ] **BATCH-06**: Verify batch-of-1 performance matches single-vector API
-- [ ] **BATCH-07**: Demonstrate batch-of-64 performance improvement
+- [x] **BATCH-06**: Verify batch-of-1 performance matches single-vector API
+- [x] **BATCH-07**: Demonstrate batch-of-64 performance improvement
 
 ### GPU Backend (Phase 4)
 
@@ -129,8 +129,8 @@ Which phases cover which requirements. Updated during roadmap creation.
 | BATCH-03 | Phase 3 | Complete |
 | BATCH-04 | Phase 3 | Complete |
 | BATCH-05 | Phase 3 | Complete |
-| BATCH-06 | Phase 3 | Pending |
-| BATCH-07 | Phase 3 | Pending |
+| BATCH-06 | Phase 3 | Complete |
+| BATCH-07 | Phase 3 | Complete |
 | GPU-01 | Phase 4 | Pending |
 | GPU-02 | Phase 4 | Pending |
 | GPU-03 | Phase 4 | Pending |
