@@ -17,12 +17,14 @@
 //!   ⟨q, x⟩ ≈ ‖x‖ · ⟨R q, dequant(R x̂)⟩  =  ‖x‖ · Σᵢ (Rq)ᵢ · centroid[idxᵢ]
 
 use crate::{
-    backend::{Backend, ScalarBackend},
+    backend::{Backend, DefaultBackend},
     bitpack,
     codebook::Codebook,
     error::{Result, TurboQuantError},
     rotation::Rotation,
 };
+#[cfg(not(feature = "simd"))]
+use crate::backend::ScalarBackend;
 use rayon::prelude::*;
 use std::sync::Mutex;
 
@@ -61,8 +63,11 @@ impl QuantizedVector {
 // ── PolarQuant ──────────────────────────────────────────────────────────────
 
 /// Stage-1 TurboQuant quantizer: rotation + optimal scalar quantization.
+///
+/// The default type parameter resolves to [`DefaultBackend`], which is
+/// [`ScalarBackend`] without the `simd` feature and [`RuntimeBackend`] with it.
 #[derive(Debug)]
-pub struct PolarQuant<B: Backend = ScalarBackend> {
+pub struct PolarQuant<B: Backend = DefaultBackend> {
     rotation: Rotation<B>,
     codebook: Codebook,
     backend: B,
@@ -81,14 +86,20 @@ impl<B: Backend> Clone for PolarQuant<B> {
     }
 }
 
-impl PolarQuant<ScalarBackend> {
-    /// Create a PolarQuant with the default scalar backend.
+impl PolarQuant<DefaultBackend> {
+    /// Create a [`PolarQuant`] with the best available backend.
+    ///
+    /// Without the `simd` feature this uses [`ScalarBackend`].
+    /// With `simd` it auto-selects AVX2 / FMA / AVX-512 / NEON at runtime.
     ///
     /// - `dim`  — head dimension; **must be a power of two** (64, 128, 256, …)
     /// - `bits` — target bit-width per coordinate: 2, 3, or 4
     /// - `seed` — RNG seed for the rotation matrix
     pub fn new(dim: usize, bits: u8, seed: u64) -> Result<Self> {
-        Self::new_with_backend(dim, bits, seed, ScalarBackend)
+        #[cfg(feature = "simd")]
+        { Self::new_with_backend(dim, bits, seed, crate::backend::RuntimeBackend::best_available()) }
+        #[cfg(not(feature = "simd"))]
+        { Self::new_with_backend(dim, bits, seed, ScalarBackend) }
     }
 }
 
@@ -161,8 +172,9 @@ impl<B: Backend> PolarQuant<B> {
         self.check_dim(query.len())?;
         self.check_dim(key.dim)?;
 
-        // Compute rotated query using scratch buffer (avoids allocation).
-        // Scope the borrow_mut guard so it drops before we return.
+        // Rotate query into scratch buffer, then accumulate via backend dot product.
+        // Using dequantize_slice + backend.dot_product lets the SIMD backend
+        // vectorize the accumulation loop (8 or 16 f32/cycle with AVX2/AVX-512).
         let dot = {
             let mut scratch = self.scratch.lock().unwrap_or_else(|e| e.into_inner());
             scratch.clear();
@@ -170,12 +182,9 @@ impl<B: Backend> PolarQuant<B> {
             self.rotation.apply(&mut scratch);
 
             let indices = bitpack::unpack(&key.packed, key.dim, key.bits)?;
+            let centroids = self.codebook.dequantize_slice(&indices);
 
-            scratch
-                .iter()
-                .zip(&indices)
-                .map(|(&q, &idx)| q * self.codebook.dequantize_scalar(idx))
-                .sum::<f32>()
+            self.backend.dot_product(&scratch, &centroids)
         }; // Mutex guard dropped here
 
         // Scale by key norm (query norm does not factor in here;
@@ -472,6 +481,7 @@ mod tests {
         (0..dim).map(|i| (i as f32 * freq).sin()).collect()
     }
 
+    #[allow(dead_code)]
     fn dot(a: &[f32], b: &[f32]) -> f32 {
         a.iter().zip(b).map(|(&x, &y)| x * y).sum()
     }
@@ -589,6 +599,7 @@ mod batch_tests {
         (0..dim).map(|i| (i as f32 * freq).sin()).collect()
     }
 
+    #[allow(dead_code)]
     fn dot(a: &[f32], b: &[f32]) -> f32 {
         a.iter().zip(b).map(|(&x, &y)| x * y).sum()
     }

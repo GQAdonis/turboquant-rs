@@ -12,11 +12,13 @@
 //! The paper uses Prod for the theoretical unbiasedness guarantee.
 
 use crate::{
-    backend::{Backend, ScalarBackend},
+    backend::{Backend, DefaultBackend},
     error::Result,
     polar_quant::{PolarQuant, QuantizedVector},
     qjl::{Qjl, QjlVector},
 };
+#[cfg(not(feature = "simd"))]
+use crate::backend::ScalarBackend;
 
 // ── Public compressed types ─────────────────────────────────────────────────
 
@@ -52,8 +54,11 @@ impl TurboVectorProd {
 /// For most use cases, use [`TurboQuant::compress_mse`] and
 /// [`TurboQuant::inner_product_mse`] — they are simpler, faster, and match the
 /// Prod variant's quality in practice.
+///
+/// The default type parameter is [`DefaultBackend`]: scalar without the `simd`
+/// feature, and the fastest auto-detected SIMD tier with it.
 #[derive(Debug)]
-pub struct TurboQuant<B: Backend = ScalarBackend> {
+pub struct TurboQuant<B: Backend = DefaultBackend> {
     // Stage-1 MSE quantizer (full b bits).
     mse: PolarQuant<B>,
     // Stage-1 Prod quantizer (b-1 bits); None when bits <= 2.
@@ -74,14 +79,20 @@ impl<B: Backend> Clone for TurboQuant<B> {
     }
 }
 
-impl TurboQuant<ScalarBackend> {
-    /// Create a [`TurboQuant`] instance with the default scalar backend.
+impl TurboQuant<DefaultBackend> {
+    /// Create a [`TurboQuant`] instance with the best available backend.
+    ///
+    /// Without the `simd` feature this uses [`ScalarBackend`].
+    /// With `simd` it auto-selects AVX2 / FMA / AVX-512 / NEON at runtime.
     ///
     /// - `dim`  — vector dimension (must be a power of two)
     /// - `bits` — target bit-width: 2, 3, or 4
     /// - `seed` — base seed; the QJL rotation uses `seed.wrapping_add(1)`
     pub fn new(dim: usize, bits: u8, seed: u64) -> Result<Self> {
-        Self::new_with_backend(dim, bits, seed, ScalarBackend)
+        #[cfg(feature = "simd")]
+        { Self::new_with_backend(dim, bits, seed, crate::backend::RuntimeBackend::best_available()) }
+        #[cfg(not(feature = "simd"))]
+        { Self::new_with_backend(dim, bits, seed, ScalarBackend) }
     }
 }
 

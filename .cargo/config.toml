@@ -1,0 +1,6 @@
+[build]
+# Enable native CPU instruction set for local development and release builds.
+# This unlocks AVX2, FMA, and AVX-512F detection at runtime on the build host.
+# CI environments that need portable binaries should override this with:
+#   RUSTFLAGS="" cargo build --release --features simd
+rustflags = ["-C", "target-cpu=native"]

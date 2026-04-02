@@ -20,24 +20,32 @@
 //! This allows independent optimal scalar quantization per coordinate.
 
 use crate::{
-    backend::{Backend, ScalarBackend},
+    backend::{Backend, DefaultBackend},
     error::{Result, TurboQuantError},
 };
+#[cfg(not(feature = "simd"))]
+use crate::backend::ScalarBackend;
 
 /// A seeded, reproducible randomized Hadamard rotation for a fixed dimension.
 #[derive(Debug, Clone)]
-pub struct Rotation<B: Backend = ScalarBackend> {
+pub struct Rotation<B: Backend = DefaultBackend> {
     /// ±1 signs for the diagonal matrix D, stored as i8 for compact layout.
     signs: Vec<i8>,
+    /// Precomputed XOR masks for SIMD sign-flip: `0x80000000` when sign==-1, else `0`.
+    sign_masks: Vec<u32>,
     pub dim: usize,
     pub seed: u64,
     backend: B,
 }
 
-impl Rotation<ScalarBackend> {
-    /// Create a new rotation with the default scalar backend.
+impl Rotation<DefaultBackend> {
+    /// Create a new rotation with the default backend (scalar without `simd` feature,
+    /// [`RuntimeBackend`][crate::backend::RuntimeBackend] with it).
     pub fn new(dim: usize, seed: u64) -> Result<Self> {
-        Self::new_with_backend(dim, seed, ScalarBackend)
+        #[cfg(feature = "simd")]
+        { Self::new_with_backend(dim, seed, crate::backend::RuntimeBackend::best_available()) }
+        #[cfg(not(feature = "simd"))]
+        { Self::new_with_backend(dim, seed, ScalarBackend) }
     }
 }
 
@@ -47,16 +55,16 @@ impl<B: Backend> Rotation<B> {
         if !dim.is_power_of_two() {
             return Err(TurboQuantError::DimensionNotPowerOfTwo(dim));
         }
-        Ok(Self { signs: gen_signs(dim, seed), dim, seed, backend })
+        let signs = gen_signs(dim, seed);
+        let sign_masks = signs.iter().map(|&s| if s < 0 { 0x8000_0000u32 } else { 0u32 }).collect();
+        Ok(Self { signs, sign_masks, dim, seed, backend })
     }
 
     /// Apply R: x → H̃(D x)   (in-place).
     #[inline]
     pub fn apply(&self, v: &mut [f32]) {
         debug_assert_eq!(v.len(), self.dim);
-        for (x, &s) in v.iter_mut().zip(&self.signs) {
-            *x *= s as f32;
-        }
+        self.backend.apply_signs(v, &self.sign_masks);
         self.backend.fwht_normalized_inplace(v);
     }
 
@@ -65,9 +73,7 @@ impl<B: Backend> Rotation<B> {
     pub fn apply_inverse(&self, v: &mut [f32]) {
         debug_assert_eq!(v.len(), self.dim);
         self.backend.fwht_normalized_inplace(v);
-        for (x, &s) in v.iter_mut().zip(&self.signs) {
-            *x *= s as f32;
-        }
+        self.backend.apply_signs(v, &self.sign_masks);
     }
 
     #[inline]

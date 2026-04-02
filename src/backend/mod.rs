@@ -1,11 +1,18 @@
 //! Backend abstraction for compute operations.
 //!
 //! The [`Backend`] trait abstracts performance-critical operations (FWHT,
-//! dot product, dimension validation) so that future phases can provide
-//! SIMD and GPU implementations without changing the core algorithm code.
+//! dot product, sign-flip, and dimension validation) so that SIMD and GPU
+//! implementations can be swapped without changing algorithm code.
 //!
-//! Phase 1 provides [`ScalarBackend`] which wraps the existing scalar
-//! implementations.  Phase 2 adds [`SimdBackend`] and [`RuntimeBackend`].
+//! ## Default backend selection
+//!
+//! | Feature flag | [`DefaultBackend`] | Runtime dispatch |
+//! |---|---|---|
+//! | *(none)* | [`ScalarBackend`] | none |
+//! | `simd` | [`RuntimeBackend`] | AVX2 / FMA / AVX-512 / NEON |
+//!
+//! Use [`DefaultBackend`] as the type parameter in [`PolarQuant`] and
+//! [`TurboQuant`] to automatically get the fastest available implementation.
 
 mod scalar;
 
@@ -18,7 +25,7 @@ mod gpu;
 pub use scalar::ScalarBackend;
 
 #[cfg(feature = "simd")]
-pub use simd::{SimdBackend, RuntimeBackend};
+pub use simd::{Avx512Backend, SimdBackend, RuntimeBackend};
 
 #[cfg(feature = "gpu")]
 pub use gpu::GpuBackend;
@@ -40,6 +47,33 @@ pub trait Backend: Clone + std::fmt::Debug + Send + Sync {
     /// Compute dot product of two equal-length f32 slices.
     fn dot_product(&self, a: &[f32], b: &[f32]) -> f32;
 
+    /// Apply diagonal sign-flip: `data[i] ^= sign_masks[i]` (XOR on sign bit).
+    ///
+    /// `sign_masks[i]` is `0x80000000u32` when the sign is −1, else `0`.
+    /// SIMD backends implement this as a bitwise XOR on 8 or 16 floats at a time.
+    /// The default implementation is a scalar loop using bit-cast.
+    #[inline]
+    fn apply_signs(&self, data: &mut [f32], sign_masks: &[u32]) {
+        debug_assert_eq!(data.len(), sign_masks.len());
+        for (x, &mask) in data.iter_mut().zip(sign_masks) {
+            *x = f32::from_bits(x.to_bits() ^ mask);
+        }
+    }
+
     /// Validate that `dim` is a power of two.
     fn validate_dimension(&self, dim: usize) -> Result<()>;
 }
+
+/// The default backend, selected at compile time.
+///
+/// With `features = ["simd"]` this resolves to [`RuntimeBackend`], which
+/// auto-detects AVX2/FMA/AVX-512 on x86_64 and NEON on aarch64.
+/// Without it, resolves to [`ScalarBackend`].
+#[cfg(feature = "simd")]
+pub type DefaultBackend = RuntimeBackend;
+
+/// The default backend, selected at compile time.
+///
+/// Without the `simd` feature this is the pure-scalar baseline.
+#[cfg(not(feature = "simd"))]
+pub type DefaultBackend = ScalarBackend;

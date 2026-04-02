@@ -61,7 +61,9 @@ pub mod turboquant;
 pub use backend::{Backend, ScalarBackend};
 
 #[cfg(feature = "simd")]
-pub use backend::{SimdBackend, RuntimeBackend};
+pub use backend::{Avx512Backend, SimdBackend, RuntimeBackend};
+
+pub use backend::DefaultBackend;
 
 #[cfg(feature = "gpu")]
 pub use backend::GpuBackend;

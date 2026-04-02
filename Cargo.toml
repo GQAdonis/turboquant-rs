@@ -44,6 +44,12 @@ harness = false
 path = "benches/gpu_bench.rs"
 required-features = ["gpu"]
 
+[[bench]]
+name = "backend_bench"
+harness = false
+path = "benches/backend_bench.rs"
+required-features = ["simd"]
+
 [profile.release]
 opt-level   = 3
 lto         = "thin"
