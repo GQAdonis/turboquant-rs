@@ -299,9 +299,46 @@ Most transformer models use head dimensions that satisfy these constraints natur
 🚧 **Future Work:**
 - SIMD acceleration (AVX2, NEON)
 - GPU kernels (CUDA, ROCm)
-- Integration examples with popular LLM frameworks (llama.cpp, candle)
 - Dynamic sequence length and cache eviction
 - Mixed-precision support
+
+## candle-vllm Integration
+
+TurboQuant-RS is integrated into **[candle-vllm](https://github.com/GQAdonis/candle-vllm)** as a transparent KV-cache compression layer inside its `CacheEngine`.  When enabled, KV vectors are compressed after each forward pass and decompressed lazily before the next one — the model always receives dense, full-precision tensors.
+
+### Quick Setup
+
+```yaml
+# models.yaml
+models:
+  - name: my-model
+    hf_id: meta-llama/Llama-3.3-70B-Instruct
+    params:
+      mem: 20000           # KV-cache budget in MB
+      kvcache_compression:
+        bits: 3            # 2 | 3 (recommended) | 4
+        policy:
+          threshold_tokens: 4096   # start compressing after 4K context
+```
+
+### What it Enables
+
+| Scenario | Without compression | With 3-bit compression |
+|----------|--------------------|-----------------------|
+| Llama-3.3-70B on 2× A100 80 GB | ~32K context | ~160K context |
+| Qwen2.5-72B on 1× A100 80 GB | ~8K context | ~40K context |
+| Llama-3.1-8B on 1× RTX 4090 24 GB | ~48K context | ~240K context |
+| Any model, same context | baseline throughput | ~5× more concurrent requests |
+
+### How It Works
+
+1. `CacheEngine` constructs a `CompressedStore` (one `CompressedLayerCache` per transformer layer).
+2. Each `CompressedLayerCache` holds two `TurboQuant` instances (key + value) with fixed rotation matrices computed at startup.
+3. `get_kv_tensors()` decompresses slots on the fly before each `pipeline.forward()` call.
+4. `push_compressed()` stores newly generated KV vectors in compressed form after each step.
+5. Block-count profiling uses `bytes_per_block()` so the scheduler allocates proportionally more GPU blocks when compression is active.
+
+See [docs/candle-vllm-integration.md](docs/candle-vllm-integration.md) for full technical detail.
 
 ## Contributing
 
