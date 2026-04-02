@@ -24,7 +24,7 @@ use crate::{
     rotation::Rotation,
 };
 use rayon::prelude::*;
-use std::cell::RefCell;
+use std::sync::Mutex;
 
 #[cfg(feature = "gpu")]
 use crate::backend::gpu::{GpuBackend, GPU_BATCH_THRESHOLD};
@@ -66,7 +66,7 @@ pub struct PolarQuant<B: Backend = ScalarBackend> {
     rotation: Rotation<B>,
     codebook: Codebook,
     backend: B,
-    scratch: RefCell<Vec<f32>>,
+    scratch: Mutex<Vec<f32>>,
 }
 
 impl<B: Backend> Clone for PolarQuant<B> {
@@ -76,7 +76,7 @@ impl<B: Backend> Clone for PolarQuant<B> {
             rotation: self.rotation.clone(),
             codebook: self.codebook.clone(),
             backend: self.backend.clone(),
-            scratch: RefCell::new(Vec::with_capacity(dim)),
+            scratch: Mutex::new(Vec::with_capacity(dim)),
         }
     }
 }
@@ -97,7 +97,7 @@ impl<B: Backend> PolarQuant<B> {
     pub fn new_with_backend(dim: usize, bits: u8, seed: u64, backend: B) -> Result<Self> {
         let rotation = Rotation::new_with_backend(dim, seed, backend.clone())?;
         let codebook = Codebook::new(bits, dim)?;
-        let scratch = RefCell::new(Vec::with_capacity(dim));
+        let scratch = Mutex::new(Vec::with_capacity(dim));
         Ok(Self { rotation, codebook, backend, scratch })
     }
 
@@ -164,7 +164,7 @@ impl<B: Backend> PolarQuant<B> {
         // Compute rotated query using scratch buffer (avoids allocation).
         // Scope the borrow_mut guard so it drops before we return.
         let dot = {
-            let mut scratch = self.scratch.borrow_mut();
+            let mut scratch = self.scratch.lock().unwrap_or_else(|e| e.into_inner());
             scratch.clear();
             scratch.extend_from_slice(query);
             self.rotation.apply(&mut scratch);
@@ -176,7 +176,7 @@ impl<B: Backend> PolarQuant<B> {
                 .zip(&indices)
                 .map(|(&q, &idx)| q * self.codebook.dequantize_scalar(idx))
                 .sum::<f32>()
-        }; // borrow_mut guard dropped here
+        }; // Mutex guard dropped here
 
         // Scale by key norm (query norm does not factor in here;
         // the caller applies it via the standard softmax attention formula).
